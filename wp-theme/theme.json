@@ -1,0 +1,88 @@
+{
+  "version": 2,
+  "settings": {
+    "appearanceTools": true,
+    "color": {
+      "palette": [
+        {
+          "slug": "primary",
+          "color": "#0F1729",
+          "name": "Primary (Navy)"
+        },
+        {
+          "slug": "accent",
+          "color": "#F59F0A",
+          "name": "Accent (Gold)"
+        },
+        {
+          "slug": "background",
+          "color": "#FFFFFF",
+          "name": "Background"
+        },
+        {
+          "slug": "secondary",
+          "color": "#F1F5F9",
+          "name": "Secondary"
+        }
+      ]
+    },
+    "typography": {
+      "fontFamilies": [
+        {
+          "fontFamily": "\"Space Grotesk\", sans-serif",
+          "name": "Space Grotesk (Headings)",
+          "slug": "heading",
+          "fontFace": [
+            {
+              "fontFamily": "Space Grotesk",
+              "fontWeight": "300 700",
+              "fontStyle": "normal",
+              "src": [ "https://fonts.gstatic.com/s/spacegrotesk/v15/V8mDoQDj3hyHErbVE9X54B7lb6Fl.woff2" ]
+            }
+          ]
+        },
+        {
+          "fontFamily": "\"Inter\", sans-serif",
+          "name": "Inter (Body)",
+          "slug": "body",
+          "fontFace": [
+            {
+              "fontFamily": "Inter",
+              "fontWeight": "300 700",
+              "fontStyle": "normal",
+              "src": [ "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfMZhrib2Bg-4.woff2" ]
+            }
+          ]
+        }
+      ]
+    },
+    "layout": {
+      "contentSize": "1200px",
+      "wideSize": "1440px"
+    }
+  },
+  "styles": {
+    "typography": {
+      "fontFamily": "var(--wp--preset--font-family--body)",
+      "lineHeight": "1.6"
+    },
+    "elements": {
+      "h1": {
+        "typography": {
+          "fontFamily": "var(--wp--preset--font-family--heading)",
+          "fontWeight": "900",
+          "fontStyle": "italic",
+          "textTransform": "uppercase"
+        }
+      },
+      "h2": {
+        "typography": {
+          "fontFamily": "var(--wp--preset--font-family--heading)",
+          "fontWeight": "900",
+          "fontStyle": "italic",
+          "textTransform": "uppercase"
+        }
+      }
+    }
+  }
+}
