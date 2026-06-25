@@ -13,5 +13,7 @@ export function useAuth() {
     return unsubscribe
   }, [])
 
-  return { user, isLoading, login: blink.auth.login, logout: blink.auth.logout }
+  const login = (redirect?: string) => blink.auth.login(redirect)
+  const logout = () => blink.auth.logout()
+  return { user, isLoading, login, logout }
 }
