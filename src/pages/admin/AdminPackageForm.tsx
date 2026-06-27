@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useAllPackages, useCreatePackage, useUpdatePackage } from '../../hooks/usePackages'
 import { Button, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Textarea, Switch, toast } from '@blinkdotnew/ui'
-import { ArrowLeft, Plus, X } from 'lucide-react'
+import { ArrowLeft, Plus, X, Clock } from 'lucide-react'
 
 export function AdminPackageForm() {
   const params = useParams({ from: '/admin/$id/edit', shouldThrow: false }) as { id?: string } | undefined
@@ -292,6 +292,20 @@ export function AdminPackageForm() {
           </Button>
         </div>
       </form>
+
+      {isEdit && existing && (
+        <p className="text-xs text-muted-foreground text-right mt-8 flex items-center justify-end gap-1.5">
+          <Clock size={12} />
+          Last modified:{' '}
+          {new Date(existing.updated_at).toLocaleString('en-AU', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          })}
+        </p>
+      )}
     </div>
   )
 }

@@ -2,7 +2,7 @@ import React from 'react'
 import { Link } from '@tanstack/react-router'
 import { useAllPackages, useDeletePackage, TripPackage } from '../../hooks/usePackages'
 import { Button, DataTable, toast } from '@blinkdotnew/ui'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Clock } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -115,6 +115,22 @@ export function AdminPackages() {
           searchColumn="title"
         />
       )}
+
+      <p className="text-xs text-muted-foreground text-right mt-6 flex items-center justify-end gap-1.5">
+        <Clock size={12} />
+        Last modified:{' '}
+        {packages && packages.length > 0
+          ? new Date(
+              Math.max(...packages.map((p: any) => new Date(p.updated_at).getTime()))
+            ).toLocaleString('en-AU', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            })
+          : '—'}
+      </p>
     </div>
   )
 }
