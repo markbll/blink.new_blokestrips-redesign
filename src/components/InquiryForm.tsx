@@ -2,7 +2,7 @@ import React from 'react';
 import { TripInquiryForm } from './TripInquiryForm';
 import { motion } from 'framer-motion';
 import { Zap, CreditCard, Shirt, ListChecks } from 'lucide-react';
-import { toast } from '@blinkdotnew/ui';
+import toast from 'react-hot-toast';
 
 export const InquiryForm = () => {
   return (
@@ -68,7 +68,7 @@ export const InquiryForm = () => {
           >
             <TripInquiryForm 
               onSuccess={() => {
-                toast.success("Enquiry sent!", { description: "We'll be in touch within 24 hours." });
+                toast.success("Enquiry sent! We'll be in touch within 24 hours.");
               }}
             />
           </motion.div>

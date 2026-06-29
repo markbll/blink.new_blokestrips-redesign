@@ -1,16 +1,39 @@
 import React from 'react'
-import { Navbar } from '../components/Navbar'
-import { Hero } from '../components/Hero'
+import { Navbar }    from '../components/Navbar'
+import { Hero }      from '../components/Hero'
 import { HowItWorks } from '../components/HowItWorks'
-import { Packages } from '../components/Packages'
+import { Packages }  from '../components/Packages'
 import { InquiryForm } from '../components/InquiryForm'
-import { Footer } from '../components/Footer'
+import { Footer }    from '../components/Footer'
+import { PageMeta }  from '../components/PageMeta'
+
+const homeSchema = [
+  {
+    "@context": "https://schema.org",
+    "@type": "TravelAgency",
+    "name": "BlokesTrips",
+    "description": "Done-for-you group trip planning for Australian men.",
+    "url": "https://blokestrips.com.au",
+    "telephone": "1300253537",
+    "email": "info@blokestrips.com.au",
+    "areaServed": "Australia",
+    "priceRange": "$$",
+    "sameAs": ["https://www.instagram.com/blokestrips","https://www.facebook.com/blokestrips"],
+    "aggregateRating": { "@type": "AggregateRating", "ratingValue": "5.0", "reviewCount": "3", "bestRating": "5" }
+  }
+]
 
 export function HomePage() {
   return (
     <div className="min-h-screen">
+      <PageMeta
+        title="BlokesTrips — Australia's #1 Group Trip Organiser"
+        description="Golf trips, fishing getaways, bucks parties — fully organised end-to-end. You bring the crew. We handle absolutely everything else."
+        schema={homeSchema}
+        schemaId="home-schema"
+      />
       <Navbar />
-      <main>
+      <main id="main-content">
         <Hero />
 
         <section className="py-24 bg-accent text-primary relative overflow-hidden">

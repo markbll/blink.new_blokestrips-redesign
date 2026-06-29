@@ -1,17 +1,28 @@
 import React from 'react';
+import { Link } from '@tanstack/react-router';
 import { Button } from '@blinkdotnew/ui';
 import { motion } from 'framer-motion';
 import { ArrowRight, Trophy, Beer, Calendar } from 'lucide-react';
+import { useHeroPackages } from '../hooks/usePackages';
 
 export const Hero = () => {
+  const { data: heroPackages } = useHeroPackages();
+
+  // Featured Trip = first hero package by displayOrder (lowest number)
+  const featuredTrip = heroPackages && heroPackages.length > 0
+    ? [...heroPackages].sort((a, b) => Number(a.display_order) - Number(b.display_order))[0]
+    : null;
+
   return (
     <section className="relative min-h-screen flex items-center pt-20 overflow-hidden bg-primary">
-      {/* Background Image with Overlay */}
+      {/* Background Image */}
       <div className="absolute inset-0 z-0">
         <img
           src="https://images.unsplash.com/photo-1593398737367-bbc0298eed88?q=80&w=2072&auto=format&fit=crop"
           alt="Golf sunset"
           className="w-full h-full object-cover opacity-40"
+          loading="eager"
+          decoding="async"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/60 to-transparent" />
       </div>
@@ -31,21 +42,21 @@ export const Hero = () => {
               <span className="text-accent">Sorted.</span>
             </h1>
             <p className="text-xl lg:text-2xl text-white/80 mb-10 max-w-2xl leading-relaxed">
-              Golf trips, fishing getaways, bucks parties — fully organised end-to-end. 
+              Golf trips, fishing getaways, bucks parties — fully organised end-to-end.
               You bring the crew. We handle absolutely everything else.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 mb-16">
-              <Button 
-                size="lg" 
+              <Button
+                size="lg"
                 className="bg-accent text-primary hover:bg-accent/90 border-none font-black h-16 px-8 text-lg uppercase italic tracking-tight"
-                onClick={() => document.getElementById('packages')?.scrollIntoView({ behavior: 'smooth' })}
+                onClick={() => { window.location.href = '/packages'; }}
               >
                 View Packages <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
-              <Button 
-                variant="outline" 
-                size="lg" 
+              <Button
+                variant="outline"
+                size="lg"
                 className="text-white border-white/20 hover:bg-white/10 h-16 px-8 text-lg font-bold"
                 onClick={() => document.getElementById('register')?.scrollIntoView({ behavior: 'smooth' })}
               >
@@ -69,9 +80,7 @@ export const Hero = () => {
               </div>
               <div className="flex items-center gap-3 text-white/60">
                 <div className="flex">
-                  {[1,2,3,4,5].map(i => (
-                    <span key={i} className="text-accent">★</span>
-                  ))}
+                  {[1,2,3,4,5].map(i => <span key={i} className="text-accent">★</span>)}
                 </div>
                 <span className="text-sm font-medium leading-tight">5-Star <br/>Reviews</span>
               </div>
@@ -80,25 +89,42 @@ export const Hero = () => {
         </div>
       </div>
 
-      {/* Floating Elements Inspired by BigCaddy */}
-      <motion.div 
-        className="absolute bottom-10 right-10 hidden xl:block w-96 h-96 pointer-events-none"
-        initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
-        animate={{ opacity: 1, scale: 1, rotate: 0 }}
-        transition={{ delay: 0.4, duration: 0.8 }}
-      >
-        <div className="relative w-full h-full bg-accent/20 rounded-3xl backdrop-blur-3xl p-8 border border-accent/20 perspective-1000 rotate-y-12 shadow-2xl overflow-hidden">
-          <img 
-            src="https://images.unsplash.com/photo-1593398737367-bbc0298eed88?q=80&w=2072&auto=format&fit=crop" 
-            className="w-full h-full object-cover rounded-xl"
-            alt="Golf"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-primary/80 to-transparent p-6 flex flex-col justify-end">
-            <span className="text-accent font-black text-xs uppercase tracking-widest mb-1">Featured Trip</span>
-            <h3 className="text-white font-display text-2xl font-black italic uppercase leading-none">Murray River <br/>Ultimate</h3>
-          </div>
-        </div>
-      </motion.div>
+      {/* Featured Trip card — only shown when a hero package exists */}
+      {featuredTrip && (
+        <motion.div
+          className="absolute bottom-10 right-10 hidden xl:block w-96 h-96"
+          initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
+          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+          transition={{ delay: 0.4, duration: 0.8 }}
+        >
+          <Link
+            to="/packages/$type/$slug"
+            params={{ type: featuredTrip.package_type, slug: featuredTrip.slug }}
+            className="block relative w-full h-full bg-accent/20 rounded-3xl backdrop-blur-3xl border border-accent/20 shadow-2xl overflow-hidden group"
+          >
+            <img
+              src={featuredTrip.image_url}
+              alt={featuredTrip.title}
+              className="w-full h-full object-cover rounded-xl transition-transform duration-700 group-hover:scale-105"
+              loading="lazy"
+              decoding="async"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/20 to-transparent p-6 flex flex-col justify-end">
+              <span className="text-accent font-black text-xs uppercase tracking-widest mb-1">Featured Trip</span>
+              <h3 className="text-white font-display text-2xl font-black italic uppercase leading-tight mb-2">
+                {featuredTrip.title}
+              </h3>
+              <div className="flex items-center justify-between">
+                <span className="text-white/60 text-xs font-bold uppercase tracking-widest">{featuredTrip.location}</span>
+                <span className="text-accent font-black text-lg">{featuredTrip.price}<span className="text-white/40 text-xs font-normal"> pp</span></span>
+              </div>
+              <div className="mt-3 flex items-center gap-1 text-accent text-xs font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                View Trip <ArrowRight size={12} className="ml-1" />
+              </div>
+            </div>
+          </Link>
+        </motion.div>
+      )}
     </section>
   );
 };

@@ -1,0 +1,1 @@
+<?php echo json_encode(['php' => PHP_VERSION, 'post_max' => ini_get('post_max_size'), 'input' => file_get_contents('php://input')]); ?>

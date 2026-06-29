@@ -1,19 +1,32 @@
 import { useState, useEffect } from 'react'
-import { blink } from '@/blink/client'
+import { api } from '@/lib/api'
+
+interface Admin { id: string; email: string; name: string }
 
 export function useAuth() {
-  const [user, setUser] = useState<ReturnType<typeof blink.auth.onAuthStateChanged> extends (cb: infer C) => void ? Parameters<C>[0]['user'] : unknown>(null)
+  const [user, setUser] = useState<Admin | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const unsubscribe = blink.auth.onAuthStateChanged((state) => {
-      setUser(state.user)
-      if (!state.isLoading) setIsLoading(false)
-    })
-    return unsubscribe
+    const token = localStorage.getItem('adminToken')
+    if (!token) { setIsLoading(false); return }
+    api.admin.me()
+      .then(data => setUser(data))
+      .catch(() => localStorage.removeItem('adminToken'))
+      .finally(() => setIsLoading(false))
   }, [])
 
-  const login = (redirect?: string) => blink.auth.login(redirect)
-  const logout = () => blink.auth.logout()
+  const login = async (email: string, password: string) => {
+    const { access_token } = await api.admin.login(email, password)
+    localStorage.setItem('adminToken', access_token)
+    const me = await api.admin.me()
+    setUser(me)
+  }
+
+  const logout = () => {
+    localStorage.removeItem('adminToken')
+    setUser(null)
+  }
+
   return { user, isLoading, login, logout }
 }
