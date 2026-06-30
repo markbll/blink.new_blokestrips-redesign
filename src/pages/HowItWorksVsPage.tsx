@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Navbar } from '../components/Navbar';
 import { Footer } from '../components/Footer';
 import { PageMeta } from '../components/PageMeta';
-import { MessageSquare, FileText, CheckCircle2, Calendar, Users, Trophy, Clock, DollarSign, Zap, ArrowRight } from 'lucide-react';
+import { MessageSquare, FileText, CheckCircle2, Calendar, Users, Trophy, Clock, DollarSign, Zap, ArrowRight, ClipboardCheck } from 'lucide-react';
 
 const STEPS = [
   {
@@ -49,6 +49,30 @@ const STEPS = [
   },
   {
     number: '03',
+    icon: ClipboardCheck,
+    title: 'We Handle The Heavy Lifting',
+    description: "Once your group is confirmed, BlokesTrips takes over the admin that normally turns a fun trip into a full-time job. We follow up with your guests and keep everything moving so you don't have to.",
+    bullets: [
+      { icon: null, text: 'Collect contact details for all invited guests' },
+      { icon: null, text: 'Send invitations and manage RSVPs' },
+      { icon: null, text: 'Follow up with non-responders and late confirmations' },
+      { icon: null, text: 'Collect deposits and final balance payments' },
+    ],
+    panel: {
+      title: 'Group Admin, Sorted',
+      tasklist: [
+        'Payment reminders & outstanding balances',
+        'Polo shirt sizes & apparel orders',
+        'Additional merchandise & welcome packs',
+        'Trophies, prizes & competition extras',
+        'Hotel room configurations & allocations',
+        'Dietary requirements & special requests',
+        'All guest info tracked in one place',
+      ]
+    }
+  },
+  {
+    number: '04',
     icon: CheckCircle2,
     title: 'Confirm & Enjoy',
     description: 'Your crew confirms attendance, pays deposits and we handle everything else. Just show up and have the time of your life.',
@@ -174,6 +198,21 @@ export function HowItWorksVsPage() {
                               ))}
                             </div>
                           ))}
+                        </div>
+                      </div>
+                    )}
+                    {'tasklist' in step.panel && (
+                      <div className="bg-primary rounded-[2rem] p-8 shadow-2xl">
+                        <h3 className="text-white font-display font-black uppercase italic text-xl mb-6">{step.panel.title}</h3>
+                        <div className="bg-white/5 rounded-2xl p-5">
+                          <div className="grid sm:grid-cols-1 gap-3">
+                            {step.panel.tasklist!.map((item, i) => (
+                              <div key={i} className="flex items-start gap-2.5 text-sm text-white/80">
+                                <span className="text-accent font-black mt-0.5 flex-shrink-0">✓</span>
+                                <span>{item}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     )}
