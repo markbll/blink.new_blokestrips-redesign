@@ -98,9 +98,9 @@ const STEPS = [
 ];
 
 const WHY = [
-  { emoji: '⏱️', title: 'Save Time',    desc: 'No more chasing mates, comparing accommodation or organising activities. We do it all.' },
-  { emoji: '💰', title: 'Better Value', desc: 'Group discounts and local partnerships mean better pricing than booking yourself.' },
-  { emoji: '🎯', title: 'Zero Stress',  desc: 'From booking to check-out, we handle every detail so you can just enjoy.' },
+  { emoji: '⏱️', title: 'ZERO ADMIN HOURS',         desc: 'The average trip organiser spends 40+ hours sorting a group weekend. Our clients spend zero. Not less — zero.' },
+  { emoji: '🍺', title: 'YOU ACTUALLY ENJOY THIS ONE', desc: "You've organised enough trips for everyone else. This one, you show up and someone hands you a cold beer. That's the whole idea." },
+  { emoji: '🎯', title: 'NOTHING GETS MISSED',       desc: 'Accommodation, tee times, payments, shirts, reminders, room allocations — every detail confirmed. Nothing slips through the cracks.' },
 ];
 
 export function HowItWorksVsPage() {
@@ -126,7 +126,7 @@ export function HowItWorksVsPage() {
                 How It <span className="text-accent">Works</span>
               </h1>
               <p className="text-xl lg:text-2xl text-white/70 max-w-2xl mx-auto leading-relaxed">
-                From idea to unforgettable weekend in three simple steps. We handle everything so you can focus on having a great time.
+                From idea to unforgettable weekend in four simple steps. We handle everything so you can focus on having a great time.
               </p>
             </motion.div>
           </div>
@@ -244,7 +244,7 @@ export function HowItWorksVsPage() {
             <div className="text-center mb-16">
               <span className="text-accent font-black tracking-widest uppercase text-sm mb-4 block italic">Why Us</span>
               <h2 className="text-4xl lg:text-6xl font-display font-black uppercase italic leading-[0.9] tracking-tighter">
-                Why <span className="text-accent">BlokesTrips?</span>
+                THIS IS WHAT MAKES <span className="text-accent">US DIFFERENT</span>
               </h2>
             </div>
             <div className="grid md:grid-cols-3 gap-8">

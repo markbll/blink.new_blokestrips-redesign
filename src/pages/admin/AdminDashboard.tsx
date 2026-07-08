@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { api } from '../../lib/api'
-import { Package, Mail, TrendingUp, Star } from 'lucide-react'
+import { Package, Mail, TrendingUp, Star, Clock } from 'lucide-react'
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
@@ -16,6 +16,7 @@ export function AdminDashboard() {
     { label: 'Homepage Packages',   value: stats?.homepagePackages ?? 0, icon: Star,    color: 'text-yellow-400',  bg: 'bg-yellow-400/10' },
     { label: 'Total Enquiries',     value: stats?.totalEnquiries   ?? 0, icon: Mail,    color: 'text-blue-400',    bg: 'bg-blue-400/10' },
     { label: 'New Enquiries',       value: stats?.newEnquiries     ?? 0, icon: TrendingUp, color: 'text-green-400', bg: 'bg-green-400/10' },
+    { label: 'Abandoned Leads',     value: stats?.partialEnquiries ?? 0, icon: Clock,      color: 'text-orange-400', bg: 'bg-orange-400/10', link: '/admin/enquiries' },
   ]
 
   if (loading) return <div className="text-gray-400">Loading...</div>

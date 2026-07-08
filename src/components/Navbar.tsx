@@ -1,31 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { Menu, X } from 'lucide-react';
-
-const NAV_LINKS = [
-  { label: 'How It Works', href: '/how-it-works' },
-  { label: 'Packages',     href: '/packages' },
-  { label: 'Franchise',    href: '/franchise' },
-  { label: 'Reviews',      href: '/reviews' },
-];
+import { useReviews } from '../hooks/useReviews';
 
 export const Navbar = () => {
-  const [scrolled,       setScrolled]  = useState(false);
-  const [mobileOpen,     setMobileOpen] = useState(false);
+  const [scrolled,   setScrolled]   = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const { enabled: reviewsEnabled, reviews } = useReviews();
   const router     = useRouter();
   const isHomepage = router.state.location.pathname === '/';
 
-  // Solid background required when not on homepage, or when scrolled past 80px
+  const NAV_LINKS = [
+    { label: 'How It Works', href: '/how-it-works' },
+    { label: 'Packages',     href: '/packages' },
+    ...(reviewsEnabled && reviews.length > 0 ? [{ label: 'Reviews', href: '/reviews' }] : []),
+    { label: 'About',        href: '/about' },
+    { label: 'Contact',      href: '/contact' },
+  ];
+
   const showSolidBg = !isHomepage || scrolled;
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 80);
     window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll(); // run once on mount
+    handleScroll();
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Close mobile menu on route change
   useEffect(() => { setMobileOpen(false); }, [router.state.location.pathname]);
 
   return (
@@ -62,17 +63,19 @@ export const Navbar = () => {
           </a>
         </div>
 
-        {/* Mobile hamburger */}
-        <button
-          type="button"
-          aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
-          aria-expanded={mobileOpen}
-          aria-controls="mobile-nav"
-          className="lg:hidden text-white"
-          onClick={() => setMobileOpen(!mobileOpen)}
-        >
-          {mobileOpen ? <X size={28} /> : <Menu size={28} />}
-        </button>
+        {/* Mobile: hamburger */}
+        <div className="lg:hidden flex items-center gap-3">
+          <button
+            type="button"
+            aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-nav"
+            className="text-white"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <X size={28} /> : <Menu size={28} />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile menu */}

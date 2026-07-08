@@ -1,17 +1,16 @@
 import React, { useState, useMemo, useRef } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useAllPackages, useDeletePackage, useCreatePackage, TripPackage } from '../../hooks/usePackages'
+import { useAdminPackages, useDeletePackage, useCreatePackage, TripPackage } from '../../hooks/usePackages'
 import toast from 'react-hot-toast'
 import { Plus, Pencil, Trash2, ArrowUpDown, ArrowUp, ArrowDown, Download, Upload, FileDown, Search, Star, Package, Sparkles } from 'lucide-react'
 
 const TYPE_LABELS: Record<string, string> = {
-  golf: 'Golf', fishing: 'Fishing', bucks: 'Bucks', custom: 'Custom', sports: 'Sports',
+  golf: 'Golf', fishing: 'Fishing', custom: 'Custom', sports: 'Sports',
 }
 
 const TYPE_COLORS: Record<string, string> = {
   golf:    'bg-green-500/10 text-green-400 border-green-500/20',
   fishing: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  bucks:   'bg-purple-500/10 text-purple-400 border-purple-500/20',
   sports:  'bg-orange-500/10 text-orange-400 border-orange-500/20',
   custom:  'bg-gray-500/10 text-gray-400 border-gray-500/20',
 }
@@ -30,7 +29,7 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
 }
 
 export function AdminPackages() {
-  const { data: packages, isLoading, refetch } = useAllPackages()
+  const { data: packages, isLoading, refetch } = useAdminPackages()
   const deleteMutation = useDeletePackage()
   const createMutation = useCreatePackage()
   const importRef = useRef<HTMLInputElement>(null)
@@ -65,7 +64,11 @@ export function AdminPackages() {
       if (sortKey === 'title') { va = a.title; vb = b.title }
       else if (sortKey === 'package_type') { va = a.package_type; vb = b.package_type }
       else if (sortKey === 'is_hero') { va = Number(a.is_hero); vb = Number(b.is_hero) }
-      else if (sortKey === 'price') { va = parseFloat(String(a.price).replace(/[^0-9.]/g, '')); vb = parseFloat(String(b.price).replace(/[^0-9.]/g, '')) }
+      else if (sortKey === 'price') {
+        // POA has no numeric price — sort it to the end regardless of direction
+        va = a.price_on_application ? Infinity : parseFloat(String(a.price).replace(/[^0-9.]/g, ''))
+        vb = b.price_on_application ? Infinity : parseFloat(String(b.price).replace(/[^0-9.]/g, ''))
+      }
       else if (sortKey === 'display_order') { va = Number(a.display_order); vb = Number(b.display_order) }
       if (va < vb) return sortDir === 'asc' ? -1 : 1
       if (va > vb) return sortDir === 'asc' ? 1 : -1

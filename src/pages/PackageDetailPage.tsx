@@ -1,10 +1,13 @@
-import React from 'react'
+import React, { useState, useMemo } from 'react'
 import { useParams, Link } from '@tanstack/react-router'
 import { Navbar } from '../components/Navbar'
 import { Footer } from '../components/Footer'
 import { PageMeta } from '../components/PageMeta'
+import { TestimonialSnippet } from '../components/TestimonialSnippet'
 import { usePackageBySlug, usePackagesByType, TripPackage } from '../hooks/usePackages'
 import { TripInquiryForm } from '../components/TripInquiryForm'
+import { OptionalExtrasSelector } from '../components/OptionalExtrasSelector'
+import { OptionalExtra } from '../hooks/useExtras'
 import { Button, Card } from '@blinkdotnew/ui'
 import { motion } from 'framer-motion'
 import { MapPin, Users, Check, Clock, ArrowRight, ChevronRight } from 'lucide-react'
@@ -13,7 +16,6 @@ import toast from 'react-hot-toast'
 const TYPE_LABELS: Record<string, string> = {
   golf:    'Golf Weekends',
   fishing: 'Fishing Trips',
-  bucks:   'Bucks Parties',
   custom:  'Custom Trips',
   sports:  'Sports Weekends',
 }
@@ -27,6 +29,30 @@ export function PackageDetailPage() {
   // Filter out current package from similar
   const similarPackages = (similar || []).filter((p: TripPackage) => p.id !== slug).slice(0, 3)
 
+  // Optional Extras — selection lifted here so the sidebar price updates live
+  const [selectedExtras, setSelectedExtras] = useState<OptionalExtra[]>([])
+  const toggleExtra = (extra: OptionalExtra) => {
+    setSelectedExtras(prev =>
+      prev.some(e => e.id === extra.id) ? prev.filter(e => e.id !== extra.id) : [...prev, extra]
+    )
+  }
+  const isPoa = !!pkg?.price_on_application
+  const basePrice = pkg && !isPoa ? parseFloat(String(pkg.price).replace(/[^0-9.]/g, '')) || 0 : 0
+  const hasPoaExtra = selectedExtras.some(e => e.priceOnApplication)
+  const extrasTotal = selectedExtras.filter(e => !e.priceOnApplication).reduce((sum, e) => sum + e.price, 0)
+  const totalPrice = basePrice + extrasTotal
+  const showPoaHeadline = isPoa || hasPoaExtra
+
+  const extrasNote = useMemo(() => {
+    if (selectedExtras.length === 0) return undefined
+    const lines = selectedExtras.map(e => `- ${e.name} (${e.priceOnApplication ? 'POA' : `+$${e.price.toFixed(0)}pp`})`)
+    const totalLine = showPoaHeadline
+      ? 'OPTIONAL EXTRAS SELECTED (final price on application):'
+      : `OPTIONAL EXTRAS SELECTED (total from $${totalPrice.toFixed(0)}pp):`
+    return `${totalLine}\n${lines.join('\n')}`
+  }, [selectedExtras, totalPrice, showPoaHeadline])
+
+  // Omit "offers" entirely for POA packages — no real price to declare in structured data
   const productSchema = pkg ? {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -34,16 +60,16 @@ export function PackageDetailPage() {
     "description": pkg.description,
     "image": pkg.image_url,
     "brand": { "@type": "Brand", "name": "BlokesTrips" },
-    "offers": { "@type": "Offer", "priceCurrency": "AUD", "price": pkg.price.replace(/[^0-9.]/g, ''), "availability": "https://schema.org/InStock", "seller": { "@type": "Organization", "name": "BlokesTrips" } }
+    ...(isPoa ? {} : { "offers": { "@type": "Offer", "priceCurrency": "AUD", "price": pkg.price.replace(/[^0-9.]/g, ''), "availability": "https://schema.org/InStock", "seller": { "@type": "Organization", "name": "BlokesTrips" } } })
   } : null
 
   const breadcrumbSchema = pkg ? {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     "itemListElement": [
-      { "@type": "ListItem", "position": 1, "name": "Home",     "item": "https://staging.blokestrips.com.au/" },
-      { "@type": "ListItem", "position": 2, "name": "Packages", "item": "https://staging.blokestrips.com.au/packages" },
-      { "@type": "ListItem", "position": 3, "name": label,      "item": `https://staging.blokestrips.com.au/packages/${type}` },
+      { "@type": "ListItem", "position": 1, "name": "Home",     "item": "https://blokestrips.com.au/" },
+      { "@type": "ListItem", "position": 2, "name": "Packages", "item": "https://blokestrips.com.au/packages" },
+      { "@type": "ListItem", "position": 3, "name": label,      "item": `https://blokestrips.com.au/packages/${type}` },
       { "@type": "ListItem", "position": 4, "name": pkg.title }
     ]
   } : null
@@ -76,16 +102,16 @@ export function PackageDetailPage() {
               schemaId="pkg-schema"
             />
             {/* Breadcrumb nav */}
-            <div className="pt-24 pb-0 container mx-auto px-6">
+            <div className="pt-24 pb-0 container mx-auto px-6 bg-page">
               <nav aria-label="Breadcrumb" className="py-4">
-                <ol className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground font-medium">
+                <ol className="flex flex-wrap items-center gap-1 text-xs text-white/50 font-medium">
                   <li><a href="/" className="hover:text-accent transition-colors">Home</a></li>
                   <li><ChevronRight size={12} /></li>
                   <li><a href="/packages" className="hover:text-accent transition-colors">Packages</a></li>
                   <li><ChevronRight size={12} /></li>
                   <li><a href={`/packages/${type}`} className="hover:text-accent transition-colors">{label}</a></li>
                   <li><ChevronRight size={12} /></li>
-                  <li aria-current="page" className="text-foreground font-semibold truncate max-w-[200px]">{pkg.title}</li>
+                  <li aria-current="page" className="text-white font-semibold truncate max-w-[200px]">{pkg.title}</li>
                 </ol>
               </nav>
             </div>
@@ -116,13 +142,14 @@ export function PackageDetailPage() {
                     </span>
                   )}
                   <span className="px-4 py-1.5 bg-accent/90 backdrop-blur-md rounded-full text-sm font-black uppercase tracking-widest text-primary">
-                    {pkg.price} pp
+                    {isPoa ? 'Price on Application' : `From ${pkg.price} pp`}
                   </span>
                 </div>
               </div>
             </div>
 
             {/* Main content */}
+            <div className="bg-page">
             <div className="container mx-auto px-6 py-16">
               <div className="grid lg:grid-cols-3 gap-16">
 
@@ -131,39 +158,39 @@ export function PackageDetailPage() {
 
                   {/* Description */}
                   <div>
-                    <p className="text-xl text-muted-foreground leading-relaxed">{pkg.description}</p>
+                    <p className="text-xl text-page-muted leading-relaxed">{pkg.description}</p>
                   </div>
 
-                  {/* What's Included (features) */}
+                  {/* What We Handle (features) */}
                   {pkg.features && pkg.features.length > 0 && (
                     <div>
-                      <h2 className="text-3xl font-display font-black uppercase italic mb-6">
-                        What's <span className="text-accent">Included</span>
+                      <h2 className="text-3xl font-display font-black uppercase italic mb-6 text-white">
+                        What We <span className="text-accent">Handle For You</span>
                       </h2>
                       <div className="grid sm:grid-cols-2 gap-4">
                         {pkg.features.map((feature: string, i: number) => (
-                          <div key={i} className="flex items-start gap-3 p-4 bg-secondary/30 rounded-xl">
-                            <span className="text-accent mt-1 bg-accent/10 p-1 rounded-full flex-shrink-0">
+                          <div key={i} className="flex items-start gap-3 p-4 bg-glass border border-glass rounded-xl">
+                            <span className="text-accent mt-1 bg-accent/20 p-1 rounded-full flex-shrink-0">
                               <Check size={14} />
                             </span>
-                            <span className="font-medium">{feature}</span>
+                            <span className="font-medium text-page">{feature}</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Package Highlights (included field) — compact, below features */}
+                  {/* Package Highlights */}
                   {pkg.included && pkg.included.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-display font-black uppercase italic mb-4 text-muted-foreground tracking-wide">
+                      <h3 className="text-lg font-display font-black uppercase italic mb-4 text-white/50 tracking-wide">
                         Package Highlights
                       </h3>
                       <div className="flex flex-wrap gap-2">
                         {pkg.included.map((item: string, i: number) => (
                           <span
                             key={i}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent/8 border border-accent/20 rounded-full text-xs font-semibold text-foreground/80"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 border border-accent/30 rounded-full text-xs font-semibold text-white"
                           >
                             <span className="text-accent font-black">✓</span>
                             {item}
@@ -173,13 +200,22 @@ export function PackageDetailPage() {
                     </div>
                   )}
 
+                  {/* Optional Extras — selection drives the live sidebar price */}
+                  <OptionalExtrasSelector
+                    basePrice={basePrice}
+                    priceOnApplication={isPoa}
+                    packageId={pkg.id}
+                    selected={selectedExtras}
+                    onToggle={toggleExtra}
+                  />
+
                   {/* Quote */}
-                  <div className="bg-secondary/20 rounded-[2rem] p-8 lg:p-12">
-                    <blockquote className="text-xl font-display italic text-muted-foreground leading-relaxed">
-                      "Every trip is fully customised to your group. We handle absolutely everything —
+                  <div className="bg-primary border border-white/10 rounded-[2rem] p-8 lg:p-12">
+                    <blockquote className="text-xl font-display italic text-white/80 leading-relaxed">
+                      "Every trip is fully organised for your group. We handle absolutely everything —
                       from the moment you enquire to the moment you're back home with stories to tell."
                     </blockquote>
-                    <p className="mt-4 font-black uppercase tracking-widest text-sm">— The BlokesTrips Team</p>
+                    <p className="mt-4 font-black uppercase tracking-widest text-sm text-white">— The BlokesTrips Team</p>
                   </div>
                 </div>
 
@@ -189,17 +225,45 @@ export function PackageDetailPage() {
                   animate={{ opacity: 1, y: 0 }}
                   className="lg:sticky lg:top-24 self-start"
                 >
-                  <div className="bg-secondary/30 p-8 rounded-[2rem] border border-secondary">
-                    <h3 className="text-2xl font-display font-black uppercase italic mb-1 leading-tight">
-                      Step 1. Tell Us<br />
-                      <span className="text-accent">The Vision</span>
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-6">
+                  <div className="bg-glass p-8 rounded-[2rem] border border-glass">
+                    <div className="flex items-baseline justify-between mb-1">
+                      <h3 className="text-2xl font-display font-black uppercase italic leading-tight text-white">
+                        Step 1. Tell Us<br />
+                        <span className="text-accent">The Vision</span>
+                      </h3>
+                      <span className="text-right flex-shrink-0">
+                        {showPoaHeadline ? (
+                          <span className="text-accent font-black text-2xl uppercase italic block leading-none">POA</span>
+                        ) : (
+                          <>
+                            <span className="block text-page-subtle text-[10px] uppercase tracking-widest font-bold">From</span>
+                            <span className="text-accent font-black text-2xl uppercase italic block leading-none">${totalPrice.toFixed(0)}<span className="text-page-subtle text-xs font-normal">pp</span></span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    {!showPoaHeadline && extrasTotal > 0 && (
+                      <p className="text-[11px] text-page-subtle mb-2">
+                        ${basePrice.toFixed(0)} base + ${extrasTotal.toFixed(0)} in extras
+                      </p>
+                    )}
+                    {showPoaHeadline && (extrasTotal > 0 || hasPoaExtra) && (
+                      <p className="text-[11px] text-page-subtle mb-2">
+                        {isPoa ? 'Base price on application' : `$${basePrice.toFixed(0)} base`}
+                        {extrasTotal > 0 && ` + $${extrasTotal.toFixed(0)} in extras`}
+                        {hasPoaExtra && ' + add-ons on application'}
+                      </p>
+                    )}
+                    <p className="text-sm text-page-subtle mb-5">
                       Fill the form and we'll get back within 24 hours with a custom itinerary.
                     </p>
+                    <div className="mb-6 pb-6 border-b border-white/10">
+                      <TestimonialSnippet variant="dark" />
+                    </div>
                     <TripInquiryForm
                       initialTripType={label}
                       showTitle={false}
+                      extrasNote={extrasNote}
                       onSuccess={() => toast.success("Enquiry sent! We'll be in touch within 24 hours.")}
                     />
                   </div>
@@ -207,13 +271,15 @@ export function PackageDetailPage() {
               </div>
             </div>
 
+            </div>{/* end bg-page wrapper */}
+
             {/* Similar Packages */}
             {similarPackages.length > 0 && (
-              <section className="py-20 bg-secondary/20">
+              <section className="py-20 bg-primary">
                 <div className="container mx-auto px-6">
                   <div className="mb-12">
                     <span className="text-accent font-black tracking-widest uppercase text-sm mb-3 block italic">More Like This</span>
-                    <h2 className="text-3xl lg:text-5xl font-display font-black uppercase italic leading-tight">
+                    <h2 className="text-3xl lg:text-5xl font-display font-black uppercase italic leading-tight text-white">
                       Similar <span className="text-accent">Trips</span>
                     </h2>
                   </div>
@@ -237,7 +303,7 @@ export function PackageDetailPage() {
                             />
                             <div className="absolute bottom-4 left-4">
                               <span className="px-3 py-1 bg-accent text-primary rounded-full text-xs font-black uppercase tracking-widest">
-                                {p.price} pp
+                                {p.price_on_application ? 'POA' : `From ${p.price} pp`}
                               </span>
                             </div>
                           </div>

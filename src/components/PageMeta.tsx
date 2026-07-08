@@ -2,10 +2,10 @@ import { useEffect } from 'react';
 import { useRouter } from '@tanstack/react-router';
 
 const SITE      = 'BlokesTrips';
-const BASE_URL  = 'https://staging.blokestrips.com.au';
+const BASE_URL  = 'https://blokestrips.com.au';
 const OG_IMAGE  = `${BASE_URL}/og-image.jpg`;
 const DEFAULT_TITLE = "BlokesTrips — Australia's #1 Group Trip Organiser";
-const DEFAULT_DESC  = "Golf trips, fishing getaways, bucks parties — fully organised end-to-end. You bring the crew. We handle absolutely everything else.";
+const DEFAULT_DESC  = "Golf trips, fishing getaways, sports weekends — fully organised end-to-end. You bring the crew. We handle absolutely everything else.";
 
 const set = (sel: string, attr: string, val: string) => {
   let el = document.querySelector(sel);

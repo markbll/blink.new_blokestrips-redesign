@@ -23,6 +23,18 @@ import { AdminDashboard }    from './pages/admin/AdminDashboard'
 import { AdminPackages }     from './pages/admin/AdminPackages'
 import { AdminPackageForm }  from './pages/admin/AdminPackageForm'
 import { AdminEnquiries }    from './pages/admin/AdminEnquiries'
+import { AdminReviews }      from './pages/admin/AdminReviews'
+import { AdminFeaturedTrip } from './pages/admin/AdminFeaturedTrip'
+import { AdminSettings }     from './pages/admin/AdminSettings'
+import { AdminTripOptions }  from './pages/admin/AdminTripOptions'
+import { AdminOptionalExtras } from './pages/admin/AdminOptionalExtras'
+import { AdminUsers }        from './pages/admin/AdminUsers'
+import { AdminScraper }      from './pages/admin/AdminScraper'
+import { AdminNotes }        from './pages/admin/AdminNotes'
+import { AdminResetPasswordPage } from './pages/AdminResetPasswordPage'
+import { AboutPage }         from './pages/AboutPage'
+import { ContactPage }       from './pages/ContactPage'
+import { BuildMyTripPage }   from './pages/BuildMyTripPage'
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> })
 
@@ -36,6 +48,9 @@ const howItWorksOldRoute= createRoute({ getParentRoute: () => rootRoute, path: '
 const reviewsRoute      = createRoute({ getParentRoute: () => rootRoute, path: '/reviews',       component: ReviewsPage })
 const franchiseRoute    = createRoute({ getParentRoute: () => rootRoute, path: '/franchise',     component: FranchisePage })
 const planMyTripRoute   = createRoute({ getParentRoute: () => rootRoute, path: '/plan-my-trip',  component: PlanMyTripPage })
+const aboutRoute        = createRoute({ getParentRoute: () => rootRoute, path: '/about',         component: AboutPage })
+const contactRoute      = createRoute({ getParentRoute: () => rootRoute, path: '/contact',       component: ContactPage })
+const buildMyTripRoute  = createRoute({ getParentRoute: () => rootRoute, path: '/build-my-trip', component: BuildMyTripPage })
 const termsRoute        = createRoute({ getParentRoute: () => rootRoute, path: '/terms',         component: () => <LegalPage type="terms" /> })
 const privacyRoute      = createRoute({ getParentRoute: () => rootRoute, path: '/privacy',       component: () => <LegalPage type="privacy" /> })
 const cancellationRoute = createRoute({ getParentRoute: () => rootRoute, path: '/cancellation',  component: () => <LegalPage type="cancellation" /> })
@@ -57,14 +72,25 @@ const adminLoginRoute    = createRoute({
 const adminPackagesRoute = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/packages',           component: AdminPackages })
 const adminNewRoute      = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/packages/new',       component: () => <AdminPackageForm /> })
 const adminEditRoute     = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/packages/$id/edit',  component: () => <AdminPackageForm /> })
-const adminEnquiriesRoute= createRoute({ getParentRoute: () => adminLayoutRoute, path: '/enquiries',          component: AdminEnquiries })
+const adminEnquiriesRoute  = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/enquiries',     component: AdminEnquiries })
+const adminReviewsRoute    = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/reviews',       component: AdminReviews })
+const adminFeaturedRoute   = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/featured-trip', component: AdminFeaturedTrip })
+const adminSettingsRoute   = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/settings',      component: AdminSettings })
+const adminTripOptsRoute   = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/trip-options',  component: AdminTripOptions })
+const adminExtrasRoute     = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/optional-extras', component: AdminOptionalExtras })
+const adminUsersRoute      = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/users',         component: AdminUsers })
+const adminDiscoveryRoute  = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/discovery',     component: AdminScraper })
+const adminNotesRoute      = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/notes',         component: AdminNotes })
+const adminResetPassRoute  = createRoute({ getParentRoute: () => rootRoute,        path: '/admin/reset-password', component: AdminResetPasswordPage })
 
-adminLayoutRoute.addChildren([adminIndexRoute, adminLoginRoute, adminPackagesRoute, adminNewRoute, adminEditRoute, adminEnquiriesRoute])
+adminLayoutRoute.addChildren([adminIndexRoute, adminLoginRoute, adminPackagesRoute, adminNewRoute, adminEditRoute, adminEnquiriesRoute, adminReviewsRoute, adminFeaturedRoute, adminSettingsRoute, adminTripOptsRoute, adminExtrasRoute, adminUsersRoute, adminDiscoveryRoute, adminNotesRoute])
 
 const routeTree = rootRoute.addChildren([
   indexRoute, packagesRoute, packageTypeRoute, packageDetailRoute,
   howItWorksRoute, howItWorksOldRoute, reviewsRoute, franchiseRoute, planMyTripRoute,
+  aboutRoute, contactRoute, buildMyTripRoute,
   termsRoute, privacyRoute, cancellationRoute,
+  adminResetPassRoute,
   adminLayoutRoute,
   notFoundRoute,
 ])

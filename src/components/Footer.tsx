@@ -1,5 +1,6 @@
 import React from 'react';
-import { Mail, MapPin, Phone } from 'lucide-react';
+import { Mail, MapPin } from 'lucide-react';
+import { useReviews } from '../hooks/useReviews';
 
 const InstagramIcon = () => (
   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -14,6 +15,7 @@ const FacebookIcon = () => (
 
 export const Footer = () => {
   const year = new Date().getFullYear();
+  const { enabled: reviewsEnabled, reviews } = useReviews();
   return (
     <footer className="bg-primary text-white pt-20 pb-10">
       <div className="container mx-auto px-6">
@@ -25,7 +27,7 @@ export const Footer = () => {
               </span>
             </a>
             <p className="text-white/60 mb-8 max-w-xs leading-relaxed">
-              Done-for-you guys weekends. Golf trips, fishing, bucks parties and more —
+              Done-for-you guys weekends. Golf trips, fishing and more —
               fully organised so you just show up.
             </p>
             <div className="flex gap-4">
@@ -47,7 +49,6 @@ export const Footer = () => {
             <ul className="space-y-4">
               <li><a href="/packages/golf"    className="text-white/60 hover:text-accent transition-colors">Golf Weekends</a></li>
               <li><a href="/packages/fishing" className="text-white/60 hover:text-accent transition-colors">Fishing Trips</a></li>
-              <li><a href="/packages/bucks"   className="text-white/60 hover:text-accent transition-colors">Bucks Parties</a></li>
               <li><a href="/packages/custom"  className="text-white/60 hover:text-accent transition-colors">Custom Trips</a></li>
             </ul>
           </div>
@@ -58,7 +59,11 @@ export const Footer = () => {
               <li><a href="/how-it-works" className="text-white/60 hover:text-accent transition-colors">How It Works</a></li>
               <li><a href="/packages"     className="text-white/60 hover:text-accent transition-colors">Packages</a></li>
               <li><a href="/franchise"    className="text-white/60 hover:text-accent transition-colors">Franchise</a></li>
-              <li><a href="/reviews"      className="text-white/60 hover:text-accent transition-colors">Reviews</a></li>
+              {reviewsEnabled && reviews.length > 0 && (
+                <li><a href="/reviews"    className="text-white/60 hover:text-accent transition-colors">Reviews</a></li>
+              )}
+              <li><a href="/about"        className="text-white/60 hover:text-accent transition-colors">About</a></li>
+              <li><a href="/contact"      className="text-white/60 hover:text-accent transition-colors">Contact</a></li>
             </ul>
           </div>
 
@@ -72,10 +77,6 @@ export const Footer = () => {
               <li className="flex items-center gap-3 text-white/60">
                 <MapPin size={18} className="text-accent flex-shrink-0" />
                 <span>Serving all of Australia</span>
-              </li>
-              <li className="flex items-center gap-3 text-white/60">
-                <Phone size={18} className="text-accent flex-shrink-0" />
-                <span>1300 BLOKES</span>
               </li>
             </ul>
           </div>

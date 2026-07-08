@@ -6,43 +6,62 @@ export const HowItWorks = () => {
   const steps = [
     {
       icon: <ClipboardList className="h-8 w-8" />,
-      title: "Tell Us The Vision",
-      description: "Quickly submit your group's details — dates, size, and what you're after. We handle the research and build the perfect itinerary.",
+      title: "Tell Us What You're After",
+      points: [
+        "Group size, trip type, rough dates",
+        "Takes two minutes",
+        "No phone calls, no lengthy forms",
+        "No commitment",
+      ],
       number: "01"
     },
     {
       icon: <Users className="h-8 w-8" />,
-      title: "The Boys Lock In",
-      description: "We provide a custom booking link for your crew. Everyone pays their own deposit. No more chasing mates for cash.",
+      title: "Everyone Pays Their Own Way",
+      points: [
+        "Individual payment links sent to every bloke",
+        "No more being the bank",
+        "No more awkward \"you still owe me\" chats",
+      ],
       number: "02"
     },
     {
       icon: <CheckCircle2 className="h-8 w-8" />,
-      title: "Logistics Handled",
-      description: "Accommodation, tee times, charter boats, transport — everything is booked and confirmed. You get a full digital itinerary.",
+      title: "We Sort It All",
+      points: [
+        "Accommodation, tee times, transport",
+        "Gear, competition, itineraries",
+        "This is where most organisers spend 40 hours",
+        "You spend zero",
+      ],
       number: "03"
     },
     {
       icon: <GlassWater className="h-8 w-8" />,
-      title: "Show Up & Send It",
-      description: "Turn up to cold beers in the fridge and custom gear waiting. No admin, no stress, just a legendary weekend with the boys.",
+      title: "Show Up. That's Your Only Job.",
+      points: [
+        "Cold beer waiting",
+        "Custom shirts ready",
+        "Tee times confirmed",
+        "You didn't have to do a thing",
+      ],
       number: "04"
     }
   ];
 
   return (
-    <section id="how-it-works" className="py-24 bg-background overflow-hidden">
+    <section id="how-it-works" className="py-24 bg-page overflow-hidden transition-colors duration-300">
       <div className="container mx-auto px-6">
         <div className="flex flex-col lg:flex-row justify-between items-end mb-20 gap-8">
           <div className="max-w-2xl">
-            <span className="text-accent font-black tracking-widest uppercase text-sm mb-4 block">Process</span>
-            <h2 className="text-4xl lg:text-7xl font-display font-black uppercase italic leading-[0.9] tracking-tighter">
-              Four Steps to a <br />
-              <span className="text-primary/20">Legendary Weekend</span>
+            <span className="text-accent font-black tracking-widest uppercase text-sm mb-4 block">How It Works</span>
+            <h2 className="text-4xl lg:text-7xl font-display font-black uppercase italic leading-[0.9] tracking-tighter text-page">
+              Here's What We <br />
+              <span className="text-accent">Take Off Your Plate</span>
             </h2>
           </div>
-          <p className="text-muted-foreground text-lg max-w-sm mb-4">
-            Every bit of group-chat chaos — removed. From first enquiry to cold beer in your room, it's all covered.
+          <p className="text-page-muted text-lg max-w-sm mb-4">
+            Most group trip organisers spend 40+ hours on admin. Our clients spend zero. Here's why.
           </p>
         </div>
 
@@ -54,20 +73,25 @@ export const HowItWorks = () => {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
               viewport={{ once: true }}
-              className="group relative p-8 bg-secondary/50 rounded-3xl border border-transparent hover:border-accent/20 hover:bg-white hover:scale-[1.02] transition-all duration-300 shadow-sm hover:shadow-xl"
+              className="group relative p-8 bg-glass rounded-3xl border border-glass hover:border-accent/40 hover:scale-[1.02] transition-all duration-300"
             >
-              <div className="absolute top-6 right-8 text-5xl font-display font-black text-primary/5 group-hover:text-accent/10 transition-colors">
+              <div className="absolute top-6 right-8 text-5xl font-display font-black text-page-subtle/30 group-hover:text-accent/20 transition-colors">
                 {step.number}
               </div>
-              <div className="bg-primary text-white w-16 h-16 rounded-2xl flex items-center justify-center mb-8 group-hover:bg-accent group-hover:text-primary transition-colors duration-300">
+              <div className="bg-accent text-primary w-16 h-16 rounded-2xl flex items-center justify-center mb-8">
                 {step.icon}
               </div>
-              <h3 className="text-2xl font-display font-black uppercase italic mb-4 tracking-tight">
+              <h3 className="text-2xl font-display font-black uppercase italic mb-4 tracking-tight text-page">
                 {step.title}
               </h3>
-              <p className="text-muted-foreground leading-relaxed">
-                {step.description}
-              </p>
+              <ul className="space-y-2">
+                {step.points.map((point, i) => (
+                  <li key={i} className="flex items-start gap-2 text-page-muted leading-snug">
+                    <span className="text-accent font-black mt-0.5 flex-shrink-0">•</span>
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
             </motion.div>
           ))}
         </div>

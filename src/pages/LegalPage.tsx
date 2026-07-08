@@ -16,7 +16,7 @@ const CONTENT: Record<LegalType, { title: string; metaTitle: string; metaDesc: s
       { heading: '3. Payments', body: 'A 30% deposit is required to confirm a booking. The remaining balance is due 4 weeks prior to departure. All prices are in AUD and include GST where applicable.' },
       { heading: '4. Cancellations', body: 'Cancellations more than 6 weeks before departure: 70% refund. Cancellations within 6 weeks: no refund. Spot transfers are permitted. We strongly recommend travel insurance.' },
       { heading: '5. Liability', body: 'BlokesTrips acts as an organiser. We are not liable for injury, loss, or events outside our reasonable control.' },
-      { heading: '6. Governing Law', body: 'These terms are governed by the laws of New South Wales, Australia.' },
+      { heading: '6. Governing Law', body: 'These terms are governed by the laws of Australia.' },
     ]
   },
   privacy: {

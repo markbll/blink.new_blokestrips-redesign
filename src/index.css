@@ -16,6 +16,14 @@
   html {
     height: 100%;
     scroll-behavior: smooth;
+    overflow-x: hidden;
+    /* Force light rendering for native form controls (input/select/date picker
+       chrome, autofill, etc). Without this, mobile browsers with system dark
+       mode infer the page prefers dark and render control text white-on-white
+       against our light form fields, making typed input invisible.
+       !important is required: @blinkdotnew/ui ships an unlayered `color-scheme:
+       dark` rule that otherwise always wins over our @layer base declaration. */
+    color-scheme: light !important;
   }
   #root {
     min-height: 100%;
@@ -24,7 +32,10 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-color: #0a0e1a;
     font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
+    color-scheme: light !important;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Space Grotesk', sans-serif;
@@ -33,6 +44,16 @@
 }
 
 :root {
+  /* ── Page-level theme tokens (dark mode — the site's default look) ── */
+  --page-bg: #0a0e1a;
+  --page-text: #ffffff;
+  --page-text-muted: rgba(255, 255, 255, 0.60);
+  --page-text-subtle: rgba(255, 255, 255, 0.40);
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --icon-bg: rgba(255, 255, 255, 0.10);
+  --btn-border: rgba(255, 255, 255, 0.20);
+
   --background: 0 0% 100%;
   --foreground: 222.2 84% 4.9%;
   --card: 0 0% 100%;
@@ -64,6 +85,19 @@
   --sidebar-ring: 38 92% 50%;
 }
 
+/* ── Light mode page-level token overrides ── */
+/* NOTE: keeping bg dark even in light mode so all sections stay readable */
+[data-theme="light"] {
+  --page-bg: #111827;
+  --page-text: #ffffff;
+  --page-text-muted: rgba(255, 255, 255, 0.60);
+  --page-text-subtle: rgba(255, 255, 255, 0.40);
+  --glass-bg: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --icon-bg: rgba(255, 255, 255, 0.10);
+  --btn-border: rgba(255, 255, 255, 0.20);
+}
+
 :root.dark {
   --background: 222 47% 4%;
   --foreground: 210 40% 98%;
@@ -71,8 +105,9 @@
   --card-foreground: 210 40% 98%;
   --popover: 222 47% 6%;
   --popover-foreground: 210 40% 98%;
-  --primary: 210 40% 98%;
-  --primary-foreground: 222 47% 11%;
+  /* Keep --primary as navy so bg-primary sections never turn white on system dark mode */
+  --primary: 222 47% 11%;
+  --primary-foreground: 210 40% 98%;
   --secondary: 217.2 32.6% 17.5%;
   --secondary-foreground: 210 40% 98%;
   --muted: 217.2 32.6% 17.5%;
@@ -84,6 +119,18 @@
   --border: 217.2 32.6% 17.5%;
   --input: 217.2 32.6% 17.5%;
   --ring: 38 92% 50%;
+}
+
+/* ── Page-level theme utilities ──────────────────────────────────────────── */
+@layer utilities {
+  .bg-page          { background-color: var(--page-bg); }
+  .text-page        { color: var(--page-text); }
+  .text-page-muted  { color: var(--page-text-muted); }
+  .text-page-subtle { color: var(--page-text-subtle); }
+  .bg-glass         { background-color: var(--glass-bg); }
+  .border-glass     { border-color: var(--glass-border); }
+  .bg-icon          { background-color: var(--icon-bg); }
+  .border-btn-muted { border-color: var(--btn-border); }
 }
 
 .animate-fade-in {
