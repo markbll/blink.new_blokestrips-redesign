@@ -30,6 +30,7 @@ import { AdminTripOptions }  from './pages/admin/AdminTripOptions'
 import { AdminOptionalExtras } from './pages/admin/AdminOptionalExtras'
 import { AdminUsers }        from './pages/admin/AdminUsers'
 import { AdminScraper }      from './pages/admin/AdminScraper'
+import { AdminBacklinks }    from './pages/admin/AdminBacklinks'
 import { AdminNotes }        from './pages/admin/AdminNotes'
 import { AdminResetPasswordPage } from './pages/AdminResetPasswordPage'
 import { AboutPage }         from './pages/AboutPage'
@@ -80,10 +81,11 @@ const adminTripOptsRoute   = createRoute({ getParentRoute: () => adminLayoutRout
 const adminExtrasRoute     = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/optional-extras', component: AdminOptionalExtras })
 const adminUsersRoute      = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/users',         component: AdminUsers })
 const adminDiscoveryRoute  = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/discovery',     component: AdminScraper })
+const adminBacklinksRoute  = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/backlinks',     component: AdminBacklinks })
 const adminNotesRoute      = createRoute({ getParentRoute: () => adminLayoutRoute, path: '/notes',         component: AdminNotes })
 const adminResetPassRoute  = createRoute({ getParentRoute: () => rootRoute,        path: '/admin/reset-password', component: AdminResetPasswordPage })
 
-adminLayoutRoute.addChildren([adminIndexRoute, adminLoginRoute, adminPackagesRoute, adminNewRoute, adminEditRoute, adminEnquiriesRoute, adminReviewsRoute, adminFeaturedRoute, adminSettingsRoute, adminTripOptsRoute, adminExtrasRoute, adminUsersRoute, adminDiscoveryRoute, adminNotesRoute])
+adminLayoutRoute.addChildren([adminIndexRoute, adminLoginRoute, adminPackagesRoute, adminNewRoute, adminEditRoute, adminEnquiriesRoute, adminReviewsRoute, adminFeaturedRoute, adminSettingsRoute, adminTripOptsRoute, adminExtrasRoute, adminUsersRoute, adminDiscoveryRoute, adminBacklinksRoute, adminNotesRoute])
 
 const routeTree = rootRoute.addChildren([
   indexRoute, packagesRoute, packageTypeRoute, packageDetailRoute,

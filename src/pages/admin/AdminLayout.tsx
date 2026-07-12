@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link, Outlet, useRouterState, useRouter } from '@tanstack/react-router'
 import { useAuth } from '../../hooks/useAuth'
-import { LayoutDashboard, Package, Mail, LogOut, Menu, X, ArrowLeft, RefreshCw, Sparkles, Star, Settings, ListChecks, Users, Radar, PlusCircle, NotebookPen } from 'lucide-react'
+import { LayoutDashboard, Package, Mail, LogOut, Menu, X, ArrowLeft, RefreshCw, Sparkles, Star, Settings, ListChecks, Users, Radar, PlusCircle, NotebookPen, Send } from 'lucide-react'
 import { api } from '../../lib/api'
 
 const OTP_SECONDS = 600
@@ -268,6 +268,7 @@ export function AdminLayout() {
     { to: '/admin/reviews',        label: 'Reviews',       icon: Star,            area: 'reviews' },
     { to: '/admin/enquiries',      label: 'Enquiries',     icon: Mail,            area: 'enquiries' },
     { to: '/admin/discovery',      label: 'Discovery',     icon: Radar,           area: 'discovery' },
+    { to: '/admin/backlinks',      label: 'Backlinks',     icon: Send,            area: 'backlinks' },
     { to: '/admin/settings',       label: 'Settings',      icon: Settings,        area: 'settings' },
     { to: '/admin/users',          label: 'Users',         icon: Users,           area: 'users' },
     { to: '/admin/notes',          label: 'Notes',         icon: NotebookPen,     area: 'notes' },
