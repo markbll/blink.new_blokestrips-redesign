@@ -1,0 +1,155 @@
+<#
+.SYNOPSIS
+    BlokeStrips USB Transfer Tool - first-run setup wizard.
+
+.DESCRIPTION
+    Creates or edits config.json. Lets you set the network share, locate 7-Zip,
+    choose hashing/compression options and test connectivity before saving.
+    Run this once before first use (or any time to reconfigure).
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File .\Setup.ps1
+#>
+
+[CmdletBinding()]
+param()
+
+$ErrorActionPreference = 'Stop'
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+Import-Module (Join-Path $scriptRoot 'Modules\BlokeStrips.Core.psm1') -Force
+Add-Type -AssemblyName PresentationFramework, System.Windows.Forms
+
+$config     = Import-BsConfig
+$configPath = Get-ConfigPath
+
+[xml]$xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BlokeStrips - Setup Wizard" Height="620" Width="640"
+        WindowStartupLocation="CenterScreen" Background="#FF2A2A33" FontFamily="Segoe UI">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+  <StackPanel Margin="18">
+    <TextBlock Text="Setup Wizard" FontSize="20" FontWeight="Bold" Foreground="#FF4FC3F7"/>
+    <TextBlock Text="Configure destinations and defaults, then Save." Foreground="#FF9AA0A6" Margin="0,0,0,12"/>
+
+    <TextBlock Text="1. Network share (UNC destination)" Foreground="#FFECECEC" FontWeight="SemiBold"/>
+    <DockPanel Margin="0,2,0,4">
+      <Button x:Name="BtnTestNet" Content="Test" DockPanel.Dock="Right" Padding="12,4" Margin="6,0,0,0" Foreground="#FF202020"/>
+      <TextBox x:Name="Net" Padding="5" Background="#FF20202A" Foreground="#FFECECEC"/>
+    </DockPanel>
+    <TextBlock x:Name="NetStatus" Foreground="#FF9AA0A6" FontSize="11" Margin="0,0,0,10"/>
+
+    <TextBlock Text="2. 7-Zip location" Foreground="#FFECECEC" FontWeight="SemiBold"/>
+    <DockPanel Margin="0,2,0,4">
+      <Button x:Name="BtnDetect" Content="Auto-detect" DockPanel.Dock="Right" Padding="12,4" Margin="6,0,0,0" Foreground="#FF202020"/>
+      <TextBox x:Name="Sz" Padding="5" Background="#FF20202A" Foreground="#FFECECEC"/>
+    </DockPanel>
+    <TextBlock x:Name="SzStatus" Foreground="#FF9AA0A6" FontSize="11" Margin="0,0,0,10"/>
+
+    <TextBlock Text="3. Staging folder (local, temporary)" Foreground="#FFECECEC" FontWeight="SemiBold"/>
+    <TextBox x:Name="Stage" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
+
+    <Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <StackPanel Grid.Column="0" Margin="0,0,8,0">
+        <TextBlock Text="4. Case prefix" Foreground="#FFECECEC" FontWeight="SemiBold"/>
+        <TextBox x:Name="Prefix" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
+        <TextBlock Text="Archive format" Foreground="#FFECECEC" FontWeight="SemiBold"/>
+        <ComboBox x:Name="Fmt" Margin="0,2,0,10"><ComboBoxItem>7z</ComboBoxItem><ComboBoxItem>zip</ComboBoxItem></ComboBox>
+      </StackPanel>
+      <StackPanel Grid.Column="1" Margin="8,0,0,0">
+        <TextBlock Text="Compression level" Foreground="#FFECECEC" FontWeight="SemiBold"/>
+        <Slider x:Name="Level" Minimum="0" Maximum="9" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,6,0,2"/>
+        <TextBlock x:Name="LevelLbl" Foreground="#FF9AA0A6" Margin="0,0,0,10"/>
+        <CheckBox x:Name="Sha" Content="Hash SHA-256" Foreground="#FFECECEC" Margin="0,2"/>
+        <CheckBox x:Name="Md5" Content="Hash MD5" Foreground="#FFECECEC" Margin="0,2"/>
+      </StackPanel>
+    </Grid>
+
+    <CheckBox x:Name="Embed"  Content="Embed hash manifest inside each archive" Foreground="#FFECECEC" Margin="0,6,0,2"/>
+    <CheckBox x:Name="Auto"   Content="Prompt automatically when a USB drive is connected" Foreground="#FFECECEC" Margin="0,2"/>
+    <CheckBox x:Name="All"    Content="Select all folders/files by default" Foreground="#FFECECEC" Margin="0,2"/>
+    <CheckBox x:Name="Verify" Content="Verify archive at destination after transfer" Foreground="#FFECECEC" Margin="0,2"/>
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <Button x:Name="Save"   Content="Save configuration" Padding="16,7" Margin="4" Background="#FF2E7D32" Foreground="#FFECECEC"/>
+      <Button x:Name="Cancel" Content="Close" Padding="16,7" Margin="4" Background="#FF3A3A46" Foreground="#FFECECEC"/>
+    </StackPanel>
+    <TextBlock x:Name="SaveStatus" Foreground="#FF66BB6A" Margin="0,8,0,0"/>
+  </StackPanel>
+  </ScrollViewer>
+</Window>
+"@
+
+$w = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
+$g = { param($n) $w.FindName($n) }
+
+(& $g 'Net').Text    = $config.NetworkShare
+(& $g 'Sz').Text     = $config.SevenZipPath
+(& $g 'Stage').Text  = $config.StagingFolder
+(& $g 'Prefix').Text = $config.CasePrefix
+(& $g 'Level').Value  = [double]$config.CompressionLevel
+(& $g 'LevelLbl').Text = "Level $($config.CompressionLevel) (0=store, 9=ultra)"
+(& $g 'Level').Add_ValueChanged({ (& $g 'LevelLbl').Text = "Level $([int](& $g 'Level').Value) (0=store, 9=ultra)" })
+(& $g 'Sha').IsChecked    = ($config.HashAlgorithms -contains 'SHA256')
+(& $g 'Md5').IsChecked    = ($config.HashAlgorithms -contains 'MD5')
+(& $g 'Embed').IsChecked  = [bool]$config.EmbedManifest
+(& $g 'Auto').IsChecked   = [bool]$config.AutoPromptOnInsert
+(& $g 'All').IsChecked    = [bool]$config.DefaultSelectAll
+(& $g 'Verify').IsChecked = [bool]$config.VerifyAfterTransfer
+foreach ($it in (& $g 'Fmt').Items) { if ($it.Content -eq $config.ArchiveFormat) { (& $g 'Fmt').SelectedItem = $it } }
+
+(& $g 'BtnTestNet').Add_Click({
+    $path = (& $g 'Net').Text.Trim()
+    if (Test-Path -LiteralPath $path) {
+        (& $g 'NetStatus').Text = "Reachable and writable check..."
+        try {
+            $probe = Join-Path $path (".bswrite_{0}.tmp" -f ([guid]::NewGuid().ToString('N')))
+            'probe' | Set-Content -LiteralPath $probe -ErrorAction Stop
+            Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+            (& $g 'NetStatus').Text = "OK - share is reachable and writable."
+            (& $g 'NetStatus').Foreground = '#FF66BB6A'
+        } catch {
+            (& $g 'NetStatus').Text = "Reachable but NOT writable: $($_.Exception.Message)"
+            (& $g 'NetStatus').Foreground = '#FFFFCA28'
+        }
+    } else {
+        (& $g 'NetStatus').Text = "Not reachable: $path"
+        (& $g 'NetStatus').Foreground = '#FFEF5350'
+    }
+})
+
+(& $g 'BtnDetect').Add_Click({
+    $found = Resolve-SevenZip
+    if ($found) { (& $g 'Sz').Text = $found; (& $g 'SzStatus').Text = "Found: $found"; (& $g 'SzStatus').Foreground = '#FF66BB6A' }
+    else { (& $g 'SzStatus').Text = '7-Zip not found. Install from https://www.7-zip.org and try again.'; (& $g 'SzStatus').Foreground = '#FFEF5350' }
+})
+
+(& $g 'Cancel').Add_Click({ $w.Close() })
+(& $g 'Save').Add_Click({
+    $config.NetworkShare        = (& $g 'Net').Text.Trim()
+    $config.SevenZipPath        = (& $g 'Sz').Text.Trim()
+    $config.StagingFolder       = (& $g 'Stage').Text.Trim()
+    $config.CasePrefix          = (& $g 'Prefix').Text.Trim()
+    $config.CompressionLevel    = [int](& $g 'Level').Value
+    $config.ArchiveFormat       = (& $g 'Fmt').SelectedItem.Content
+    $algs = @(); if ((& $g 'Sha').IsChecked) { $algs += 'SHA256' }; if ((& $g 'Md5').IsChecked) { $algs += 'MD5' }
+    if ($algs.Count -eq 0) { $algs = @('SHA256') }
+    $config.HashAlgorithms      = $algs
+    $config.EmbedManifest       = [bool](& $g 'Embed').IsChecked
+    $config.AutoPromptOnInsert  = [bool](& $g 'Auto').IsChecked
+    $config.DefaultSelectAll    = [bool](& $g 'All').IsChecked
+    $config.VerifyAfterTransfer = [bool](& $g 'Verify').IsChecked
+    Save-BsConfig -Config $config -Path $configPath | Out-Null
+
+    $issues = Test-BsConfig -Config $config
+    if ($issues.Count) {
+        (& $g 'SaveStatus').Text = "Saved to $configPath (with warnings: $($issues -join '; '))"
+        (& $g 'SaveStatus').Foreground = '#FFFFCA28'
+    } else {
+        (& $g 'SaveStatus').Text = "Saved to $configPath. Configuration valid. You can close and run Start-BlokeStripsTransfer.ps1."
+        (& $g 'SaveStatus').Foreground = '#FF66BB6A'
+    }
+})
+
+[void]$w.ShowDialog()

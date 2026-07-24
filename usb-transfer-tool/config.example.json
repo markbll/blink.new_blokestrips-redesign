@@ -1,0 +1,17 @@
+{
+  "NetworkShare": "\\\\SERVER\\Evidence$",
+  "SevenZipPath": "",
+  "CasePrefix": "CMS-A",
+  "CompressionLevel": 5,
+  "ArchiveFormat": "7z",
+  "SplitPerTopLevel": true,
+  "Password": "",
+  "HashAlgorithms": ["SHA256", "MD5"],
+  "EmbedManifest": true,
+  "AutoPromptOnInsert": true,
+  "DefaultSelectAll": true,
+  "VerifyAfterTransfer": true,
+  "DeleteLocalArchive": false,
+  "StagingFolder": "$env:TEMP\\BlokeStrips",
+  "ExcludePatterns": ["System Volume Information", "$RECYCLE.BIN", "Thumbs.db"]
+}

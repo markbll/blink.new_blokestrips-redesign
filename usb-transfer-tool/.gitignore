@@ -1,0 +1,6 @@
+# User-specific configuration (may contain share paths / passwords) — created by Setup.ps1
+config.json
+
+# Local staging / logs
+*.log
+staging/
