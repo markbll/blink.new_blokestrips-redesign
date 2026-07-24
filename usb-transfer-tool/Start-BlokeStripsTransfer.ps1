@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    BlokeStrips USB Compression & Transfer Tool - main GUI application.
+    Auto 49/50 - USB Compression & Transfer Tool - main GUI application.
 
 .DESCRIPTION
     Watches for USB drive arrival, prompts the operator, lets them choose which
@@ -56,7 +56,7 @@ $script:WorkerHandle = $null
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="BlokeStrips USB Compression &amp; Transfer Tool" Height="760" Width="1180"
+        Title="Auto 49/50 - USB Compression &amp; Transfer Tool" Height="760" Width="1180"
         WindowStartupLocation="CenterScreen" Background="#FF1E1E24" FontFamily="Segoe UI">
   <Window.Resources>
     <SolidColorBrush x:Key="Panel"  Color="#FF2A2A33"/>
@@ -96,9 +96,14 @@ $script:WorkerHandle = $null
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <StackPanel>
-          <TextBlock Text="BlokeStrips USB Compression &amp; Transfer" FontSize="20" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
-          <TextBlock x:Name="StatusLine" Text="Idle - waiting for a USB drive to be connected." Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
+        <StackPanel Orientation="Horizontal">
+          <Image x:Name="LogoImg" Width="52" Height="52" VerticalAlignment="Center" Margin="0,0,12,0"/>
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock FontSize="22" FontWeight="Bold">
+              <Run Text="Auto " Foreground="{StaticResource Text}"/><Run Text="49/50" Foreground="{StaticResource Accent}"/>
+            </TextBlock>
+            <TextBlock x:Name="StatusLine" Text="Idle - waiting for a USB drive to be connected." Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
+          </StackPanel>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <Button x:Name="BtnRefresh"  Content="Rescan Drives"/>
@@ -221,6 +226,28 @@ $ctrl = @{}
 $xaml.SelectNodes("//*[@*[local-name()='Name']]") | ForEach-Object {
     $name = $_.Attributes['x:Name'].Value
     if ($name) { $ctrl[$name] = $window.FindName($name) }
+}
+
+# ----------------------------------------------------------------------------
+# Branding: load the Auto 49/50 logo and window icon
+# ----------------------------------------------------------------------------
+function New-ImageSource {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
+    $bmp.BeginInit()
+    $bmp.CacheOption = 'OnLoad'
+    $bmp.UriSource = New-Object System.Uri((Resolve-Path -LiteralPath $Path).Path)
+    $bmp.EndInit()
+    $bmp.Freeze()
+    return $bmp
+}
+
+function Set-Branding {
+    $logo = Join-Path $scriptRoot 'assets\auto4950-logo.png'
+    $icon = Join-Path $scriptRoot 'assets\auto4950.ico'
+    try { $src = New-ImageSource $logo; if ($src) { $ctrl.LogoImg.Source = $src } } catch {}
+    try { $isrc = New-ImageSource $icon; if ($isrc) { $window.Icon = $isrc } } catch {}
 }
 
 # ----------------------------------------------------------------------------
@@ -641,7 +668,7 @@ function Register-UsbWatcher {
 # ----------------------------------------------------------------------------
 function Show-Help {
     $msg = @"
-BlokeStrips USB Compression & Transfer Tool
+Auto 49/50 - USB Compression & Transfer Tool
 
 WORKFLOW
   1. Connect a USB drive. If auto-prompt is on you'll be asked to proceed.
@@ -691,12 +718,13 @@ $ctrl.TxtCase.Add_TextChanged({
 })
 
 $window.Add_Loaded({
+    Set-Branding
     Update-DriveList
     Update-TreeForDrive
     Update-Footer
     Register-UsbWatcher
     $statsTimer.Start(); $pumpTimer.Start(); $usbTimer.Start()
-    Add-LogLine 'BlokeStrips USB Transfer Tool ready.' 'OK'
+    Add-LogLine 'Auto 49/50 ready.' 'OK'
     if (-not (Resolve-SevenZip -PreferredPath $config.SevenZipPath)) {
         Add-LogLine '7-Zip not found. Install it (https://www.7-zip.org) or set the path in Settings.' 'ERROR'
     }

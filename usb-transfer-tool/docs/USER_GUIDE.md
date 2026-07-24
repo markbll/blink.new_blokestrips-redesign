@@ -1,4 +1,4 @@
-# BlokeStrips USB Transfer Tool — Operator Guide
+# Auto 49/50 — USB Transfer Tool — Operator Guide
 
 This guide explains day-to-day operation, what happens under the hood, and how
 to troubleshoot.

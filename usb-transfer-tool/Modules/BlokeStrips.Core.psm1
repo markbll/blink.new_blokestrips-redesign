@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    BlokeStrips USB Compression & Transfer Tool - Core function library.
+    Auto 49/50 - USB Compression & Transfer Tool - Core function library.
 
 .DESCRIPTION
     Runspace-safe helper functions used by both the GUI (main runspace) and the

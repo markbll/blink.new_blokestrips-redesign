@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    BlokeStrips USB Transfer - background pipeline worker.
+    Auto 49/50 - USB Transfer - background pipeline worker.
 
 .DESCRIPTION
     Runs the full capture pipeline off the UI thread. Implements a producer/
