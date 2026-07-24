@@ -29,15 +29,10 @@ $configPath = Get-ConfigPath
         WindowStartupLocation="CenterScreen" Background="#FF2A2A33" FontFamily="Segoe UI">
   <ScrollViewer VerticalScrollBarVisibility="Auto">
   <StackPanel Margin="18">
-    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-      <Image x:Name="Logo" Width="48" Height="48" Margin="0,0,12,0" VerticalAlignment="Center"/>
-      <StackPanel VerticalAlignment="Center">
-        <TextBlock FontSize="20" FontWeight="Bold">
-          <Run Text="Auto " Foreground="#FFECECEC"/><Run Text="49/50" Foreground="#FF4FC3F7"/><Run Text="  -  Setup Wizard" Foreground="#FFECECEC"/>
-        </TextBlock>
-        <TextBlock Text="Configure destinations and defaults, then Save." Foreground="#FF9AA0A6"/>
-      </StackPanel>
-    </StackPanel>
+    <TextBlock FontSize="20" FontWeight="Bold">
+      <Run Text="Auto " Foreground="#FFECECEC"/><Run Text="49/50" Foreground="#FF4FC3F7"/><Run Text="  -  Setup Wizard" Foreground="#FFECECEC"/>
+    </TextBlock>
+    <TextBlock Text="Configure destinations and defaults, then Save." Foreground="#FF9AA0A6" Margin="0,0,0,12"/>
 
     <TextBlock Text="1. Network share (UNC destination)" Foreground="#FFECECEC" FontWeight="SemiBold"/>
     <DockPanel Margin="0,2,0,4">
@@ -90,26 +85,6 @@ $configPath = Get-ConfigPath
 
 $w = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
 $g = { param($n) $w.FindName($n) }
-
-# Branding: logo + window icon.
-$logoPath = Join-Path $scriptRoot 'assets\auto4950-logo.png'
-$iconPath = Join-Path $scriptRoot 'assets\auto4950.ico'
-if (Test-Path -LiteralPath $logoPath) {
-    $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
-    $bmp.BeginInit(); $bmp.CacheOption = 'OnLoad'
-    $bmp.UriSource = New-Object System.Uri((Resolve-Path -LiteralPath $logoPath).Path)
-    $bmp.EndInit(); $bmp.Freeze()
-    (& $g 'Logo').Source = $bmp
-}
-if (Test-Path -LiteralPath $iconPath) {
-    try {
-        $ib = New-Object System.Windows.Media.Imaging.BitmapImage
-        $ib.BeginInit(); $ib.CacheOption = 'OnLoad'
-        $ib.UriSource = New-Object System.Uri((Resolve-Path -LiteralPath $iconPath).Path)
-        $ib.EndInit(); $ib.Freeze()
-        $w.Icon = $ib
-    } catch {}
-}
 
 (& $g 'Net').Text    = $config.NetworkShare
 (& $g 'Sz').Text     = $config.SevenZipPath

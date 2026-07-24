@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/auto4950-wordmark.png" alt="Auto 49/50" width="640">
-</p>
-
 # Auto 49/50 — USB Compression & Transfer Tool
 
 A Windows PowerShell + WPF application that watches for USB drives, hashes their
@@ -82,7 +78,6 @@ original file's size, timestamp and SHA-256 / MD5 hashes.
 | `Setup.ps1` | First-run / reconfiguration wizard |
 | `Modules/BlokeStrips.Core.psm1` | Config, 7-Zip, hashing, transfer, stats (UI-free) |
 | `Modules/BlokeStrips.Worker.psm1` | Background compress→transfer pipeline |
-| `assets/` | Logo, wordmark and window icon (`auto4950-*.png`, `.ico`) |
 | `config.json` | Your saved settings (created by Setup) |
 | `config.example.json` | Template you can copy to `config.json` |
 | `docs/USER_GUIDE.md` | Full operator guide |

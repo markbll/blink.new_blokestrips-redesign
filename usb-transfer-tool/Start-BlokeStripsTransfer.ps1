@@ -96,14 +96,11 @@ $script:WorkerHandle = $null
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <StackPanel Orientation="Horizontal">
-          <Image x:Name="LogoImg" Width="52" Height="52" VerticalAlignment="Center" Margin="0,0,12,0"/>
-          <StackPanel VerticalAlignment="Center">
-            <TextBlock FontSize="22" FontWeight="Bold">
-              <Run Text="Auto " Foreground="{StaticResource Text}"/><Run Text="49/50" Foreground="{StaticResource Accent}"/>
-            </TextBlock>
-            <TextBlock x:Name="StatusLine" Text="Idle - waiting for a USB drive to be connected." Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
-          </StackPanel>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock FontSize="22" FontWeight="Bold">
+            <Run Text="Auto " Foreground="{StaticResource Text}"/><Run Text="49/50" Foreground="{StaticResource Accent}"/>
+          </TextBlock>
+          <TextBlock x:Name="StatusLine" Text="Idle - waiting for a USB drive to be connected." Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <Button x:Name="BtnRefresh"  Content="Rescan Drives"/>
@@ -226,28 +223,6 @@ $ctrl = @{}
 $xaml.SelectNodes("//*[@*[local-name()='Name']]") | ForEach-Object {
     $name = $_.Attributes['x:Name'].Value
     if ($name) { $ctrl[$name] = $window.FindName($name) }
-}
-
-# ----------------------------------------------------------------------------
-# Branding: load the Auto 49/50 logo and window icon
-# ----------------------------------------------------------------------------
-function New-ImageSource {
-    param([string]$Path)
-    if (-not (Test-Path -LiteralPath $Path)) { return $null }
-    $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
-    $bmp.BeginInit()
-    $bmp.CacheOption = 'OnLoad'
-    $bmp.UriSource = New-Object System.Uri((Resolve-Path -LiteralPath $Path).Path)
-    $bmp.EndInit()
-    $bmp.Freeze()
-    return $bmp
-}
-
-function Set-Branding {
-    $logo = Join-Path $scriptRoot 'assets\auto4950-logo.png'
-    $icon = Join-Path $scriptRoot 'assets\auto4950.ico'
-    try { $src = New-ImageSource $logo; if ($src) { $ctrl.LogoImg.Source = $src } } catch {}
-    try { $isrc = New-ImageSource $icon; if ($isrc) { $window.Icon = $isrc } } catch {}
 }
 
 # ----------------------------------------------------------------------------
@@ -718,7 +693,6 @@ $ctrl.TxtCase.Add_TextChanged({
 })
 
 $window.Add_Loaded({
-    Set-Branding
     Update-DriveList
     Update-TreeForDrive
     Update-Footer
