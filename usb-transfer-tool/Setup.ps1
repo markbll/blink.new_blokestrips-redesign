@@ -123,8 +123,26 @@ foreach ($it in (& $g 'Fmt').Items) { if ($it.Content -eq $config.ArchiveFormat)
 
 (& $g 'BtnDetect').Add_Click({
     $found = Resolve-SevenZip
-    if ($found) { (& $g 'Sz').Text = $found; (& $g 'SzStatus').Text = "Found: $found"; (& $g 'SzStatus').Foreground = '#FF66BB6A' }
-    else { (& $g 'SzStatus').Text = '7-Zip not found. Install from https://www.7-zip.org and try again.'; (& $g 'SzStatus').Foreground = '#FFEF5350' }
+    if ($found) {
+        (& $g 'Sz').Text = $found
+        (& $g 'SzStatus').Text = "Found: $found"
+        (& $g 'SzStatus').Foreground = '#FF66BB6A'
+        return
+    }
+    # Not auto-detected: let the operator browse to 7z.exe manually.
+    (& $g 'SzStatus').Text = '7-Zip not auto-detected. Browse to 7z.exe, or install from https://www.7-zip.org'
+    (& $g 'SzStatus').Foreground = '#FFFFCA28'
+    $dlg = New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Title  = 'Locate 7z.exe (7-Zip command-line executable)'
+    $dlg.Filter = '7-Zip executable (7z.exe;7za.exe)|7z.exe;7za.exe|Executables (*.exe)|*.exe'
+    foreach ($seed in @("$env:ProgramW6432\7-Zip", "$env:ProgramFiles\7-Zip", "${env:ProgramFiles(x86)}\7-Zip")) {
+        if ($seed -and (Test-Path -LiteralPath $seed)) { $dlg.InitialDirectory = $seed; break }
+    }
+    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        (& $g 'Sz').Text = $dlg.FileName
+        (& $g 'SzStatus').Text = "Selected: $($dlg.FileName)"
+        (& $g 'SzStatus').Foreground = '#FF66BB6A'
+    }
 })
 
 (& $g 'Cancel').Add_Click({ $w.Close() })

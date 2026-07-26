@@ -130,24 +130,102 @@ function Test-BsConfig {
 
 function Resolve-SevenZip {
     <#
-    .SYNOPSIS Locate 7z.exe. Checks preferred path, PATH, then common install dirs.
+    .SYNOPSIS Locate the 7-Zip command-line executable.
+    .DESCRIPTION
+        The 7-Zip installer does NOT add itself to PATH, so detection can't rely
+        on Get-Command alone. This checks, in order:
+          1. An explicit preferred path (from config).
+          2. The registry install path the 7-Zip installer writes (most reliable).
+          3. PATH (Get-Command), in case it was added manually.
+          4. Common install locations (Program Files, per-user, winget, choco, scoop).
+          5. The uninstall registry's InstallLocation.
+          6. A bounded search of the Program Files 7-Zip folders.
+        Falls back to the standalone 7za.exe if the full 7z.exe isn't present.
     #>
     [CmdletBinding()]
     param([string]$PreferredPath)
 
-    if ($PreferredPath -and (Test-Path -LiteralPath $PreferredPath)) { return $PreferredPath }
+    function Test-Exe([string]$p) { $p -and (Test-Path -LiteralPath $p -PathType Leaf) }
 
-    $cmd = Get-Command '7z.exe' -ErrorAction SilentlyContinue
+    # 1. Explicit preferred path (accept a folder too).
+    if ($PreferredPath) {
+        if (Test-Exe $PreferredPath) { return $PreferredPath }
+        $j = Join-Path $PreferredPath '7z.exe'
+        if (Test-Exe $j) { return $j }
+    }
+
+    # 2. Registry install path (HKLM/HKCU, native + WOW6432Node). Path64 preferred.
+    $regKeys = @(
+        'HKLM:\SOFTWARE\7-Zip'
+        'HKLM:\SOFTWARE\WOW6432Node\7-Zip'
+        'HKCU:\SOFTWARE\7-Zip'
+    )
+    foreach ($k in $regKeys) {
+        try {
+            $props = Get-ItemProperty -Path $k -ErrorAction SilentlyContinue
+            if ($props) {
+                $vals = @()
+                # Index the properties collection (StrictMode-safe: absent = $null, no throw).
+                if ($props.PSObject.Properties['Path64']) { $vals += $props.Path64 }
+                if ($props.PSObject.Properties['Path'])   { $vals += $props.Path }
+                foreach ($val in $vals) {
+                    if ($val) {
+                        $exe = Join-Path $val '7z.exe'
+                        if (Test-Exe $exe) { return $exe }
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    # 3. On PATH (only if the user added it).
+    $cmd = Get-Command '7z.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($cmd) { return $cmd.Source }
 
-    $candidates = @(
-        "$env:ProgramFiles\7-Zip\7z.exe"
-        "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
-        "$env:LOCALAPPDATA\Programs\7-Zip\7z.exe"
-    )
-    foreach ($c in $candidates) {
-        if ($c -and (Test-Path -LiteralPath $c)) { return $c }
+    # 4. Common install locations.
+    $dirs = @(
+        $env:ProgramW6432
+        $env:ProgramFiles
+        ${env:ProgramFiles(x86)}
+        "$env:LOCALAPPDATA\Programs"
+        "$env:ProgramData\chocolatey\bin"
+        "$env:LOCALAPPDATA\Microsoft\WinGet\Links"
+        "$env:USERPROFILE\scoop\shims"
+        "$env:USERPROFILE\scoop\apps\7zip\current"
+    ) | Where-Object { $_ }
+    foreach ($d in $dirs) {
+        foreach ($exe in @('7z.exe', '7za.exe')) {
+            $p1 = Join-Path $d "7-Zip\$exe"
+            $p2 = Join-Path $d $exe
+            if (Test-Exe $p1) { return $p1 }
+            if (Test-Exe $p2) { return $p2 }
+        }
     }
+
+    # 5. Uninstall registry InstallLocation.
+    $uninst = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\7-Zip'
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\7-Zip'
+    )
+    foreach ($k in $uninst) {
+        try {
+            $up = Get-ItemProperty -Path $k -ErrorAction SilentlyContinue
+            if ($up -and $up.PSObject.Properties['InstallLocation'] -and $up.InstallLocation) {
+                $exe = Join-Path $up.InstallLocation '7z.exe'
+                if (Test-Exe $exe) { return $exe }
+            }
+        } catch {}
+    }
+
+    # 6. Bounded search under Program Files (last resort; fast, top 2 levels).
+    foreach ($base in @($env:ProgramW6432, $env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ } | Select-Object -Unique) {
+        try {
+            $hit = Get-ChildItem -Path $base -Filter '7z.exe' -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($hit) { return $hit.FullName }
+        } catch {}
+    }
+
     return $null
 }
 
