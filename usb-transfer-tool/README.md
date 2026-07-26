@@ -19,7 +19,8 @@ starts uploading while the next is still compressing.
 | Prompt before acting | Yes/No dialog on insert (`AutoPromptOnInsert`), plus a final confirm |
 | Choose folders/files/drives | Checkbox tree of the drive; **all selected by default** |
 | CMS case number | Enforced `CMS-A…` prefix; used for the folder and archive names |
-| Compress with 7-Zip | `7z.exe`, level 0–9, `.7z`/`.zip`, optional AES-256 password |
+| Compress with 7-Zip | `7z.exe`, level 0–9, `zip` (default) or `7z`, optional AES-256 password |
+| Split into multiple files | Volumes of a configurable size (default **2 GB**); `0` = single file |
 | SHA-256 + MD5 of originals | Per-file manifest (`.txt` + `.csv`), **embedded in the archive** |
 | Transfer to a network share | UNC path from config; robocopy with Copy-Item fallback |
 | Start transfer early (speed) | Producer/consumer pipeline: transfer begins after the first archive |
@@ -86,14 +87,19 @@ Or right-click either `.ps1` and choose **Run with PowerShell**.
 3. Enter a case number, e.g. `CMS-A12345`.
 4. Click **Start Capture** and confirm.
 
-Output on the share:
+Output on the share (default: `zip` format, split into 2 GB volumes):
 
 ```
 \\SERVER\Evidence$\CMS-A12345\
-    CMS-A12345__Photos.7z          (archive incl. embedded manifest)
-    CMS-A12345__Documents.7z
-    CMS-A12345__report.pdf.7z
+    CMS-A12345__Photos.zip.001      (volume 1 – incl. embedded manifest)
+    CMS-A12345__Photos.zip.002      (volume 2)
+    CMS-A12345__Documents.zip.001
+    CMS-A12345__report.pdf.zip.001
 ```
+
+> When **split** is off (`VolumeSizeMB = 0`) you get single files, e.g.
+> `CMS-A12345__Photos.zip`. Reassemble volumes by opening the `.001` file in
+> 7-Zip (all parts must be in the same folder).
 
 Each archive embeds `CMS-A12345__<item>_MANIFEST.txt` and `.csv` listing every
 original file's size, timestamp and SHA-256 / MD5 hashes.
@@ -120,6 +126,9 @@ See `config.example.json`. Key settings:
 
 - **NetworkShare** — UNC destination, e.g. `\\SERVER\Evidence$`.
 - **SevenZipPath** — leave blank to auto-detect.
+- **ArchiveFormat** — `zip` (default, portable) or `7z` (smaller, AES-256).
+- **VolumeSizeMB** — split archives into volumes of this size in MB
+  (default **2048** = 2 GB); `0` = one file. Changeable in Setup **and** Settings.
 - **CompressionLevel** — `0` (store, fastest) … `9` (ultra, smallest).
 - **HashAlgorithms** — any of `SHA256`, `MD5`.
 - **VerifyAfterTransfer** — re-hash the archive at the destination.

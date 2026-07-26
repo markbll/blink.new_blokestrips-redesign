@@ -388,7 +388,9 @@ function Show-SettingsDialog {
         <TextBlock Text="Case prefix" Foreground="#FFECECEC"/>
         <TextBox x:Name="SPrefix" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
         <TextBlock Text="Archive format" Foreground="#FFECECEC"/>
-        <ComboBox x:Name="SFormat" Margin="0,2,0,10"><ComboBoxItem>7z</ComboBoxItem><ComboBoxItem>zip</ComboBoxItem></ComboBox>
+        <ComboBox x:Name="SFormat" Margin="0,2,0,10"><ComboBoxItem>zip</ComboBoxItem><ComboBoxItem>7z</ComboBoxItem></ComboBox>
+        <TextBlock Text="Split into volumes of (MB, 0 = single file)" Foreground="#FFECECEC"/>
+        <TextBox x:Name="SVolume" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
         <TextBlock Text="Optional archive password (AES-256)" Foreground="#FFECECEC"/>
         <PasswordBox x:Name="SPwd" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
       </StackPanel>
@@ -435,6 +437,7 @@ function Show-SettingsDialog {
     (& $g 'SVerify').IsChecked = [bool]$config.VerifyAfterTransfer
     (& $g 'SDelete').IsChecked = [bool]$config.DeleteLocalArchive
     (& $g 'SExcl').Text        = ($config.ExcludePatterns -join ', ')
+    (& $g 'SVolume').Text      = [string]([int]$config.VolumeSizeMB)
     foreach ($it in (& $g 'SFormat').Items) { if ($it.Content -eq $config.ArchiveFormat) { (& $g 'SFormat').SelectedItem = $it } }
 
     (& $g 'SCancel').Add_Click({ $dlg.DialogResult = $false; $dlg.Close() })
@@ -445,6 +448,8 @@ function Show-SettingsDialog {
         $config.CasePrefix          = (& $g 'SPrefix').Text.Trim()
         $config.CompressionLevel    = [int](& $g 'SLevel').Value
         $config.ArchiveFormat       = (& $g 'SFormat').SelectedItem.Content
+        $vol = 0; [void][int]::TryParse((& $g 'SVolume').Text.Trim(), [ref]$vol); if ($vol -lt 0) { $vol = 0 }
+        $config.VolumeSizeMB        = $vol
         $config.Password            = (& $g 'SPwd').Password
         $algs = @(); if ((& $g 'SSha').IsChecked) { $algs += 'SHA256' }; if ((& $g 'SMd5').IsChecked) { $algs += 'MD5' }
         if ($algs.Count -eq 0) { $algs = @('SHA256') }
@@ -471,7 +476,8 @@ function Show-SettingsDialog {
 function Update-Footer {
     $sz = Resolve-SevenZip -PreferredPath $config.SevenZipPath
     if (-not $sz) { $sz = 'NOT FOUND' }
-    $ctrl.LblDest.Text = "Destination: $($config.NetworkShare)   |   7-Zip: $sz   |   Format: $($config.ArchiveFormat)  Level: $($config.CompressionLevel)  Hash: $($config.HashAlgorithms -join '+')"
+    $split = if ([int]$config.VolumeSizeMB -gt 0) { "Split: $([int]$config.VolumeSizeMB) MB" } else { 'Split: off' }
+    $ctrl.LblDest.Text = "Destination: $($config.NetworkShare)   |   7-Zip: $sz   |   Format: $($config.ArchiveFormat)  Level: $($config.CompressionLevel)  $split  Hash: $($config.HashAlgorithms -join '+')"
 }
 
 # ----------------------------------------------------------------------------
@@ -654,17 +660,21 @@ WORKFLOW
 WHAT HAPPENS
   - Every original file is hashed (SHA-256 / MD5) into a manifest.
   - Each top-level item is compressed with 7-Zip; the manifest is embedded.
-  - As soon as the first archive is ready it starts transferring to the network
-    share while the next item compresses (pipelined for speed).
+  - Large archives are split into volumes ($([int]$config.VolumeSizeMB) MB each by default) so no
+    single file is unwieldy. Set the size to 0 for one file per item.
+  - As soon as the first archive/volume is ready it starts transferring to the
+    network share while the next item compresses (pipelined for speed).
   - Optionally the transferred archive is re-hashed at the destination to verify.
 
 NAMING
   Destination folder and archive files are named from the case number:
     <share>\$($config.CasePrefix)12345\$($config.CasePrefix)12345__<item>.$($config.ArchiveFormat)
+  When split, volumes are suffixed .001, .002, ... (open the .001 in 7-Zip to
+  reassemble; keep all parts together).
 
 SETTINGS
-  Network share, 7-Zip path, compression level, hashing, verification and
-  excludes are all in Settings and saved to config.json.
+  Network share, 7-Zip path, format, compression level, split/volume size,
+  hashing, verification and excludes are all in Settings and saved to config.json.
 
 SYSTEM MONITOR
   Live CPU, memory, network throughput and temp-folder free space.

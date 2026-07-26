@@ -35,8 +35,9 @@ function Get-DefaultConfig {
         CasePrefix          = 'CMS-A'                  # Enforced prefix for case numbers
         # --- Compression -------------------------------------------------------
         CompressionLevel    = 5                        # 0 (store) .. 9 (ultra)
-        ArchiveFormat       = '7z'                     # 7z | zip
+        ArchiveFormat       = 'zip'                     # zip | 7z
         SplitPerTopLevel    = $true                    # One archive per top-level item (enables pipelining)
+        VolumeSizeMB        = 2048                      # Split archives into volumes of this size (MB). 0 = no split
         Password            = ''                       # Optional AES-256 archive password (blank = none)
         # --- Hashing -----------------------------------------------------------
         HashAlgorithms      = @('SHA256', 'MD5')       # Original-file hashing
@@ -242,7 +243,8 @@ function New-A4950Archive {
         [Parameter(Mandatory)][string]$SourcePath,
         [Parameter(Mandatory)][string]$ArchivePath,
         [ValidateRange(0, 9)][int]$Level = 5,
-        [ValidateSet('7z', 'zip')][string]$Format = '7z',
+        [ValidateSet('7z', 'zip')][string]$Format = 'zip',
+        [int]$VolumeSizeMB = 0,          # >0 splits the archive into volumes of this size (MB)
         [string]$Password,
         [string[]]$ExcludePatterns,
         [string[]]$ExtraFiles,          # Additional files to add (e.g. the manifest)
@@ -253,11 +255,17 @@ function New-A4950Archive {
     if (-not (Test-Path -LiteralPath $archiveDir)) {
         New-Item -ItemType Directory -Path $archiveDir -Force | Out-Null
     }
+    $archiveLeaf = Split-Path -Leaf $ArchivePath
+
+    # Remove any stale output from a previous run so volume detection is clean.
+    Get-ChildItem -LiteralPath $archiveDir -Filter "$archiveLeaf*" -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
 
     # Build 7z argument list.  'a' = add, -mx = level, -t = type, -bsp1 = progress to stdout.
     $szArgs = [System.Collections.Generic.List[string]]::new()
     $szArgs.AddRange([string[]]@('a', "-t$Format", "-mx=$Level", '-bsp1', '-y', $ArchivePath, $SourcePath))
     if ($Format -eq '7z') { $szArgs.Add('-mmt=on') }          # multi-threaded
+    if ($VolumeSizeMB -gt 0) { $szArgs.Add("-v${VolumeSizeMB}m") }   # split into volumes
     if ($ExtraFiles)      { foreach ($ef in $ExtraFiles) { $szArgs.Add($ef) } }
     if ($Password) {
         $szArgs.Add("-p$Password")
@@ -270,6 +278,8 @@ function New-A4950Archive {
     $result = [pscustomobject]@{
         Success     = $false
         ArchivePath = $ArchivePath
+        Files       = @()               # actual output file(s): the archive, or its volume parts
+        IsSplit      = ($VolumeSizeMB -gt 0)
         ExitCode    = -1
         Output      = ''
     }
@@ -283,8 +293,19 @@ function New-A4950Archive {
     }
     $result.ExitCode = $LASTEXITCODE
     $result.Output   = $sb.ToString()
+
+    # Determine the produced file(s). With -v, 7-Zip writes <archive>.001, .002, ...
+    if ($VolumeSizeMB -gt 0) {
+        $vols = Get-ChildItem -LiteralPath $archiveDir -Filter "$archiveLeaf.*" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '\.\d{3}$' } | Sort-Object Name
+        if ($vols) { $result.Files = @($vols.FullName) }
+        elseif (Test-Path -LiteralPath $ArchivePath) { $result.Files = @($ArchivePath) }  # not actually split
+    } else {
+        if (Test-Path -LiteralPath $ArchivePath) { $result.Files = @($ArchivePath) }
+    }
+
     # 7-Zip exit codes: 0 = OK, 1 = warning (still usable).
-    $result.Success  = ($result.ExitCode -in 0, 1) -and (Test-Path -LiteralPath $ArchivePath)
+    $result.Success = ($result.ExitCode -in 0, 1) -and ($result.Files.Count -gt 0)
     return $result
 }
 

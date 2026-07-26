@@ -164,11 +164,15 @@ function Invoke-A4950TransferJob {
                 $extraFiles = @($manifestPath, $m.CsvPath)
             }
 
-            # 2) Compress (with manifest embedded)
+            # 2) Compress (with manifest embedded). Split into volumes if configured.
+            $volMB = 0
+            if ($cfg.PSObject.Properties['VolumeSizeMB']) { $volMB = [int]$cfg.VolumeSizeMB }
+            elseif ($cfg -is [System.Collections.IDictionary] -and $cfg.Contains('VolumeSizeMB')) { $volMB = [int]$cfg.VolumeSizeMB }
             $archivePath = Join-Path $staging ("{0}__{1}.{2}" -f $caseSafe, $itemName, $cfg.ArchiveFormat)
-            Write-A4950WorkerLog $Shared "Compressing: $itemName -> $(Split-Path -Leaf $archivePath) (level $($cfg.CompressionLevel))" 'STEP'
+            $splitNote = if ($volMB -gt 0) { " split @ ${volMB} MB" } else { '' }
+            Write-A4950WorkerLog $Shared "Compressing: $itemName -> $(Split-Path -Leaf $archivePath) (level $($cfg.CompressionLevel)$splitNote)" 'STEP'
             $a = New-A4950Archive -SevenZipPath $sevenZip -SourcePath $item -ArchivePath $archivePath `
-                    -Level $cfg.CompressionLevel -Format $cfg.ArchiveFormat -Password $cfg.Password `
+                    -Level $cfg.CompressionLevel -Format $cfg.ArchiveFormat -VolumeSizeMB $volMB -Password $cfg.Password `
                     -ExcludePatterns $cfg.ExcludePatterns -ExtraFiles $extraFiles `
                     -OnOutput ({
                         param($l)
@@ -178,10 +182,14 @@ function Invoke-A4950TransferJob {
                     }.GetNewClosure())
 
             if ($a.Success) {
-                Write-A4950WorkerLog $Shared "Compressed : $(Split-Path -Leaf $archivePath)" 'OK'
-                # Hand off to the transfer consumer immediately -> pipelined.
-                $transferQueue.Enqueue($archivePath)
-                Write-A4950WorkerLog $Shared "Queued for transfer: $(Split-Path -Leaf $archivePath)" 'INFO'
+                $parts = @($a.Files)
+                $desc = if ($parts.Count -gt 1) { "$($parts.Count) volume(s)" } else { Split-Path -Leaf $parts[0] }
+                Write-A4950WorkerLog $Shared "Compressed : $itemName -> $desc" 'OK'
+                # Hand each produced file off to the transfer consumer immediately -> pipelined.
+                foreach ($p in $parts) {
+                    $transferQueue.Enqueue($p)
+                    Write-A4950WorkerLog $Shared "Queued for transfer: $(Split-Path -Leaf $p)" 'INFO'
+                }
             } else {
                 Write-A4950WorkerLog $Shared "COMPRESS FAIL: $itemName (exit $($a.ExitCode))" 'ERROR'
             }

@@ -140,7 +140,8 @@ Open **Settings** (or re-run `Setup.ps1`). All values persist to `config.json`.
 | 7-Zip path | Blank = auto-detect |
 | Staging folder | Local temp area for archives |
 | Case prefix | Required prefix for case numbers (`CMS-A`) |
-| Archive format | `7z` (best) or `zip` (portable) |
+| Archive format | `zip` (default, portable) or `7z` (smaller) |
+| Split into volumes (MB) | Max size per file; default **2048** (2 GB); `0` = single file |
 | Compression level | 0 (store) … 9 (ultra) |
 | Archive password | Optional AES-256 (encrypts headers too on `7z`) |
 | Hash SHA-256 / MD5 | Which hashes to compute |
