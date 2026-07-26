@@ -15,10 +15,12 @@ starts uploading while the next is still compressing.
 
 | Requirement | How it's delivered |
 |---|---|
-| Detect new USB drives | WMI `Win32_VolumeChangeEvent` watcher (arrival) |
+| Detect new USB drives | WMI `Win32_VolumeChangeEvent` watcher; the drive is scanned and listed on insert |
 | Prompt before acting | Yes/No dialog on insert (`AutoPromptOnInsert`), plus a final confirm |
-| Choose folders/files/drives | Checkbox tree of the drive; **all selected by default** |
-| CMS case number | Enforced `CMS-A…` prefix; used for the folder and archive names |
+| Auto-transfer | Tick-box: start automatically on insert, needing only a CMS case **or** OP name |
+| Choose folders/files/drives | Checkbox tree of the drive; **all selected by default**; Select All / Deselect All |
+| CMS case number **or** OP name | CMS case (enforced `CMS-A…` prefix) **or** an **UPPERCASE** OP name; used for the folder and archive names |
+| All options on the main screen | Every setting (incl. **sizing**/volume split) is editable in the on-screen Options panel |
 | Compress with 7-Zip | `7z.exe`, level 0–9, `zip` (default) or `7z`, optional AES-256 password |
 | Split into multiple files | Volumes of a configurable size (default **2 GB**); `0` = single file |
 | SHA-256 + MD5 of originals | Per-file manifest (`.txt` + `.csv`), **embedded in the archive** |
@@ -82,10 +84,15 @@ powershell -ExecutionPolicy Bypass -File .\Start-Auto4950.ps1
 
 Or right-click either `.ps1` and choose **Run with PowerShell**.
 
-1. Connect a USB drive → answer **Yes** to the prompt.
-2. Tick the folders/files to capture (everything is pre-selected).
-3. Enter a case number, e.g. `CMS-A12345`.
-4. Click **Start Capture** and confirm.
+1. Connect a USB drive → it is **scanned** and its folders/files are listed.
+2. Tick what to capture (all pre-selected); use **Select All** / **Deselect All**.
+3. Enter **either** a CMS case (e.g. `CMS-A12345`) **or** an **UPPERCASE** OP name.
+4. Click **Start Capture** and confirm — or tick **Auto-transfer** to skip the
+   prompts and start automatically whenever a drive is plugged in (it just needs
+   a CMS case or OP name to already be filled in).
+
+All options — including **sizing/volume split** — live in the **Options** panel on
+the main screen; **Save Options** persists them.
 
 Output on the share (default: `zip` format, split into 2 GB volumes):
 
@@ -132,6 +139,7 @@ See `config.example.json`. Key settings:
 - **CompressionLevel** — `0` (store, fastest) … `9` (ultra, smallest).
 - **HashAlgorithms** — any of `SHA256`, `MD5`.
 - **VerifyAfterTransfer** — re-hash the archive at the destination.
+- **AutoTransfer** — start automatically on USB insert (needs a CMS case or OP name).
 - **StagingFolder** — local temp area for archives before transfer.
 - **Password** — optional AES-256 archive password (prefer setting per-session
   in Settings rather than storing in plain text).

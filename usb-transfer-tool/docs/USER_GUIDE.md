@@ -40,13 +40,14 @@ detects this and will tell you.
 ## 2. The main window
 
 ```
-┌ Header ─────────────────────────────────────────────────────────────┐
-│ Title + status            [Rescan Drives] [Settings] [Help]          │
-├ System Monitor ─┬ Selection ───────────────┬ Real-time Activity Log ─┤
-│ CPU             │ CMS Case Number          │ [09:31:02] ...          │
-│ Memory          │ Source drive ▼           │ colour-coded events     │
-│ Network Mbps    │ ☑ [Folder] Photos        │                         │
-│ Temp free space │ ☑ [File]   report.pdf    │                         │
+┌ Header ─────────────────────────────────────────────────────────────────────┐
+│ Auto 49/50 + status                     [Rescan Drives] [Help]               │
+├ System Monitor ─┬ Details + Selection ─┬ Options ───────────┬ Activity Log ──┤
+│ CPU             │ CMS Case Number      │ Network share       │ [09:31:02] ... │
+│ Memory          │ OP Name (UPPERCASE)  │ Format / Split size │ colour-coded   │
+│ Network Mbps    │ ☑ Auto-transfer      │ Level / Hashing     │ events         │
+│ Temp free space │ Drive ▼ [Sel][Desel] │ ...all options...   │                │
+│ Job progress    │ ☑ Photos  ☑ report   │ [ Save Options ]    │                │
 │ Job progress    │ ...                      │                         │
 ├─────────────────┴──────────────────────────┴─────────────────────────┤
 │ Destination: \\SERVER\...        [Start Capture]  [Cancel]           │
@@ -61,28 +62,48 @@ detects this and will tell you.
 - **Job progress** — current stage (hashing / compressing) and percentage.
 
 ### Selection panel
+- On insert the drive is **scanned automatically**; you don't have to ask for it.
 - Pick the **source drive** from the dropdown (auto-selected on USB insert).
 - The tree lists the drive's top-level **folders** and **files**, each with a
   checkbox. **Everything is ticked by default.** Expand a folder to review its
-  contents. Use **Select All** / **Clear** to toggle quickly.
+  contents. Use **Select All** / **Deselect All**, or untick individual items —
+  every selection can be de-selected.
 - Selection granularity is **top-level items** — each becomes its own archive so
   transfers can start early. To capture a specific sub-folder only, untick the
   parent and drill into it (or capture the whole folder).
 
-### CMS case number
-- Must begin with the configured prefix (default **`CMS-A`**) and include an
-  identifier, e.g. `CMS-A12345`. The hint turns highlighted until it's valid.
-- This becomes the **destination folder name** and the **archive file name
-  prefix**.
+### CMS case number / OP name
+- Provide **either**:
+  - a **CMS case** — must begin with the configured prefix (default **`CMS-A`**)
+    and include an identifier, e.g. `CMS-A12345`; **or**
+  - an **OP name** — must be **UPPERCASE** (the box forces upper case as you type).
+- If both are filled in, the **CMS case takes precedence**. The chosen value
+  becomes the **destination folder name** and **archive file name prefix**. Each
+  hint highlights until its value is valid.
+
+### Auto-transfer
+- Tick **"Auto-transfer when a USB drive is plugged in"** to start the capture
+  automatically on insert, with **no prompts**. It only requires that a valid
+  **CMS case or OP name** is already entered; if neither is set you're asked to
+  add one. All currently-selected folders/files (all by default) are captured.
+
+### Options panel (all settings, on the main screen)
+Everything is editable on the right-hand **Options** panel — network share,
+7-Zip path, staging folder, case prefix, **archive format**, **volume/split
+size (sizing)**, compression level, password, hashing, manifest embedding,
+verification, prompt-on-insert, select-all default, delete-local and exclude
+patterns. Changes apply immediately when you press **Start**; **Save Options**
+writes them to `config.json`. Every checkbox can be ticked *and* un-ticked.
 
 ---
 
 ## 3. Running a capture
 
-1. **Connect the USB drive.** With auto-prompt on, a **Yes/No** dialog appears —
-   click **Yes** to proceed (nothing happens until you do).
-2. Confirm/adjust the **selection** and enter the **case number**.
-3. Click **Start Capture** → confirm the summary dialog.
+1. **Connect the USB drive** — it is scanned and its contents listed. With
+   prompt-on-insert on (and auto-transfer off) a **Yes/No** dialog appears.
+2. Confirm/adjust the **selection** and enter a **CMS case or OP name**.
+3. Click **Start Capture** → confirm the summary dialog (skipped under
+   auto-transfer).
 4. Watch the **activity log** and **job progress**:
    - `STEP` (blue) = stage boundaries, `OK` (green) = success,
      `WARN` (amber), `ERROR` (red).
@@ -132,7 +153,8 @@ operator, file count and algorithms — a lightweight chain-of-custody record.
 
 ## 5. Settings reference
 
-Open **Settings** (or re-run `Setup.ps1`). All values persist to `config.json`.
+Edit the **Options** panel on the main screen and click **Save Options** (or
+re-run `Setup.ps1`). All values persist to `config.json`.
 
 | Setting | Meaning |
 |---|---|
@@ -146,7 +168,8 @@ Open **Settings** (or re-run `Setup.ps1`). All values persist to `config.json`.
 | Archive password | Optional AES-256 (encrypts headers too on `7z`) |
 | Hash SHA-256 / MD5 | Which hashes to compute |
 | Embed manifest | Include the manifest inside each archive |
-| Prompt on insert | Show the Yes/No dialog automatically |
+| Prompt on insert | Show the Yes/No dialog automatically (when auto-transfer is off) |
+| Auto-transfer | Start automatically on insert; needs a CMS case or OP name |
 | Select all by default | Pre-tick every folder/file |
 | Verify after transfer | Re-hash the archive at the destination |
 | Delete local archive | Remove the staged copy after success |
@@ -158,7 +181,7 @@ Open **Settings** (or re-run `Setup.ps1`). All values persist to `config.json`.
 
 | Symptom | Fix |
 |---|---|
-| "7-Zip not found" | Install 7-Zip or set the path in Settings. |
+| "7-Zip not found" | Install 7-Zip or set the path in the Options panel. |
 | "USB auto-detection unavailable" | WMI eventing blocked; use **Rescan Drives** and pick the drive manually. |
 | Share "not writable" in Setup | Check the UNC path, permissions, and that you're authenticated to it. |
 | Nothing selected | Tick at least one item, or use **Select All**. |

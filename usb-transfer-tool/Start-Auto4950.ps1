@@ -56,7 +56,7 @@ $script:WorkerHandle = $null
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Auto 49/50 - USB Compression &amp; Transfer Tool" Height="760" Width="1180"
+        Title="Auto 49/50 - USB Compression &amp; Transfer Tool" Height="820" Width="1460"
         WindowStartupLocation="CenterScreen" Background="#FF1E1E24" FontFamily="Segoe UI">
   <Window.Resources>
     <SolidColorBrush x:Key="Panel"  Color="#FF2A2A33"/>
@@ -65,6 +65,18 @@ $script:WorkerHandle = $null
     <SolidColorBrush x:Key="Muted"  Color="#FF9AA0A6"/>
     <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Text}"/></Style>
     <Style TargetType="Label"><Setter Property="Foreground" Value="{StaticResource Text}"/></Style>
+    <Style TargetType="TextBox">
+      <Setter Property="Background" Value="#FF20202A"/>
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="BorderBrush" Value="#FF444450"/>
+      <Setter Property="Padding" Value="4"/>
+      <Setter Property="Margin" Value="0,2,0,8"/>
+    </Style>
+    <Style TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="Margin" Value="0,3"/>
+    </Style>
+    <Style TargetType="ComboBox"><Setter Property="Margin" Value="0,2,0,8"/></Style>
     <Style x:Key="Card" TargetType="Border">
       <Setter Property="Background" Value="{StaticResource Panel}"/>
       <Setter Property="CornerRadius" Value="8"/>
@@ -104,7 +116,6 @@ $script:WorkerHandle = $null
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <Button x:Name="BtnRefresh"  Content="Rescan Drives"/>
-          <Button x:Name="BtnSettings" Content="Settings"/>
           <Button x:Name="BtnHelp"     Content="Help"/>
         </StackPanel>
       </Grid>
@@ -113,9 +124,10 @@ $script:WorkerHandle = $null
     <!-- Body -->
     <Grid Grid.Row="1">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="300"/>
-        <ColumnDefinition Width="1.1*"/>
-        <ColumnDefinition Width="1.3*"/>
+        <ColumnDefinition Width="250"/>
+        <ColumnDefinition Width="330"/>
+        <ColumnDefinition Width="320"/>
+        <ColumnDefinition Width="*"/>
       </Grid.ColumnDefinitions>
 
       <!-- Live system stats -->
@@ -147,10 +159,12 @@ $script:WorkerHandle = $null
         </StackPanel>
       </Border>
 
-      <!-- Selection -->
+      <!-- Transfer details + selection -->
       <Border Grid.Column="1" Style="{StaticResource Card}">
         <Grid>
           <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -159,28 +173,87 @@ $script:WorkerHandle = $null
 
           <StackPanel Grid.Row="0">
             <TextBlock Text="CMS CASE NUMBER" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
-            <TextBox x:Name="TxtCase" Text="CMS-A" Margin="0,4,0,2" Padding="6" FontSize="14"
-                     Background="#FF20202A" Foreground="{StaticResource Text}" BorderBrush="#FF444450"/>
-            <TextBlock x:Name="LblCaseHint" Text="Used as the destination folder and archive file names." Foreground="{StaticResource Muted}" FontSize="11"/>
+            <TextBox x:Name="TxtCase" Text="CMS-A" Padding="6" FontSize="14"/>
+            <TextBlock x:Name="LblCaseHint" Text="Folder / file name. Must start with the case prefix." Foreground="{StaticResource Muted}" FontSize="11"/>
           </StackPanel>
 
-          <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,4">
-            <TextBlock Text="Source drive:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <ComboBox x:Name="CmbDrive" Width="150" Background="#FF20202A" Foreground="#FF202020"/>
+          <StackPanel Grid.Row="1" Margin="0,8,0,0">
+            <TextBlock Text="OP NAME (UPPERCASE)" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
+            <TextBox x:Name="TxtOp" Padding="6" FontSize="14" CharacterCasing="Upper"/>
+            <TextBlock x:Name="LblOpHint" Text="Optional. Used if no CMS case is given. Must be UPPERCASE." Foreground="{StaticResource Muted}" FontSize="11"/>
+          </StackPanel>
+
+          <CheckBox Grid.Row="2" x:Name="ChkAuto" Margin="0,8,0,0"
+                    Content="Auto-transfer when a USB drive is plugged in (needs CMS case or OP name)"/>
+
+          <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,4">
+            <TextBlock Text="Drive:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <ComboBox x:Name="CmbDrive" Width="110" Foreground="#FF202020" VerticalAlignment="Center"/>
             <Button x:Name="BtnSelectAll" Content="Select All"/>
-            <Button x:Name="BtnSelectNone" Content="Clear"/>
+            <Button x:Name="BtnSelectNone" Content="Deselect All"/>
           </StackPanel>
 
-          <Border Grid.Row="2" Background="#FF20202A" CornerRadius="6" Margin="0,4">
+          <Border Grid.Row="4" Background="#FF20202A" CornerRadius="6" Margin="0,4">
             <TreeView x:Name="TreeItems" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"/>
           </Border>
 
-          <TextBlock Grid.Row="3" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+          <TextBlock Grid.Row="5" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+        </Grid>
+      </Border>
+
+      <!-- Options (all settings, on the main screen) -->
+      <Border Grid.Column="2" Style="{StaticResource Card}">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <TextBlock Grid.Row="0" Text="OPTIONS" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,0,6"/>
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+            <StackPanel>
+              <TextBlock Text="Network share (UNC destination)"/>
+              <TextBox x:Name="OptNet"/>
+              <TextBlock Text="7-Zip path (blank = auto-detect)"/>
+              <TextBox x:Name="Opt7z"/>
+              <TextBlock Text="Staging folder (local temp)"/>
+              <TextBox x:Name="OptStage"/>
+              <TextBlock Text="CMS case prefix"/>
+              <TextBox x:Name="OptPrefix"/>
+
+              <Separator Margin="0,6"/>
+              <TextBlock Text="SIZING / COMPRESSION" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,2,0,4"/>
+              <TextBlock Text="Archive format"/>
+              <ComboBox x:Name="OptFormat"><ComboBoxItem>zip</ComboBoxItem><ComboBoxItem>7z</ComboBoxItem></ComboBox>
+              <TextBlock Text="Split into volumes (MB, 0 = single file)"/>
+              <TextBox x:Name="OptVolume"/>
+              <TextBlock x:Name="OptLevelLbl" Text="Compression level: 5"/>
+              <Slider x:Name="OptLevel" Minimum="0" Maximum="9" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,4,0,8"/>
+              <TextBlock Text="Password (AES-256, optional)"/>
+              <PasswordBox x:Name="OptPwd" Background="#FF20202A" Foreground="#FFECECEC" BorderBrush="#FF444450" Padding="4" Margin="0,2,0,8"/>
+
+              <Separator Margin="0,6"/>
+              <TextBlock Text="HASHING &amp; INTEGRITY" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,2,0,4"/>
+              <CheckBox x:Name="OptSha"    Content="Hash SHA-256"/>
+              <CheckBox x:Name="OptMd5"    Content="Hash MD5"/>
+              <CheckBox x:Name="OptEmbed"  Content="Embed hash manifest in archive"/>
+              <CheckBox x:Name="OptVerify" Content="Verify archive at destination"/>
+
+              <Separator Margin="0,6"/>
+              <TextBlock Text="BEHAVIOUR" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,2,0,4"/>
+              <CheckBox x:Name="OptPrompt"     Content="Prompt on USB insert (when auto-transfer is off)"/>
+              <CheckBox x:Name="OptSelDefault" Content="Select all folders/files by default"/>
+              <CheckBox x:Name="OptDelete"     Content="Delete local staged archive after transfer"/>
+              <TextBlock Text="Exclude patterns (comma separated)"/>
+              <TextBox x:Name="OptExcl"/>
+            </StackPanel>
+          </ScrollViewer>
+          <Button Grid.Row="2" x:Name="BtnSaveOptions" Content="Save Options" Background="#FF2E7D32" Margin="0,6,0,0"/>
         </Grid>
       </Border>
 
       <!-- Activity log -->
-      <Border Grid.Column="2" Style="{StaticResource Card}">
+      <Border Grid.Column="3" Style="{StaticResource Card}">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -325,12 +398,16 @@ function New-TreeCheckItem {
 function Update-TreeForDrive {
     $ctrl.TreeItems.Items.Clear()
     $root = Get-SelectedDriveRoot
-    if (-not $root) { return }
+    if (-not $root) { Update-SelectionCount; return }
     $rootPath = "$root\"
+    # Honour the live option controls (so edits take effect without pressing Save).
     $checked = [bool]$config.DefaultSelectAll
+    $excl    = @($config.ExcludePatterns)
+    if ($ctrl.OptSelDefault) { $checked = [bool]$ctrl.OptSelDefault.IsChecked }
+    if ($ctrl.OptExcl)       { $excl = @($ctrl.OptExcl.Text.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
     try {
         $entries = Get-ChildItem -LiteralPath $rootPath -Force -ErrorAction SilentlyContinue |
-            Where-Object { $config.ExcludePatterns -notcontains $_.Name } |
+            Where-Object { $excl -notcontains $_.Name } |
             Sort-Object { -not $_.PSIsContainer }, Name
         foreach ($e in $entries) {
             $display = $(if ($e.PSIsContainer) { "[Folder] $($e.Name)" } else { "[File]   $($e.Name)" })
@@ -365,133 +442,109 @@ function Set-AllChecks {
     }
 }
 
+
 # ----------------------------------------------------------------------------
-# Settings dialog
+# Options panel  <->  config  (all settings live on the main screen)
 # ----------------------------------------------------------------------------
-function Show-SettingsDialog {
-    [xml]$sx = @"
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Settings" Height="560" Width="620" WindowStartupLocation="CenterOwner"
-        Background="#FF2A2A33" FontFamily="Segoe UI">
-  <ScrollViewer VerticalScrollBarVisibility="Auto">
-  <StackPanel Margin="16">
-    <TextBlock Text="Network share (UNC destination)" Foreground="#FFECECEC"/>
-    <TextBox x:Name="SNet" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
-    <TextBlock Text="7-Zip path (blank = auto-detect)" Foreground="#FFECECEC"/>
-    <TextBox x:Name="S7z" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
-    <TextBlock Text="Staging folder" Foreground="#FFECECEC"/>
-    <TextBox x:Name="SStage" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
-    <Grid>
-      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-      <StackPanel Grid.Column="0" Margin="0,0,8,0">
-        <TextBlock Text="Case prefix" Foreground="#FFECECEC"/>
-        <TextBox x:Name="SPrefix" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
-        <TextBlock Text="Archive format" Foreground="#FFECECEC"/>
-        <ComboBox x:Name="SFormat" Margin="0,2,0,10"><ComboBoxItem>zip</ComboBoxItem><ComboBoxItem>7z</ComboBoxItem></ComboBox>
-        <TextBlock Text="Split into volumes of (MB, 0 = single file)" Foreground="#FFECECEC"/>
-        <TextBox x:Name="SVolume" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
-        <TextBlock Text="Optional archive password (AES-256)" Foreground="#FFECECEC"/>
-        <PasswordBox x:Name="SPwd" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
-      </StackPanel>
-      <StackPanel Grid.Column="1" Margin="8,0,0,0">
-        <TextBlock Text="Compression level (0-9)" Foreground="#FFECECEC"/>
-        <Slider x:Name="SLevel" Minimum="0" Maximum="9" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,6,0,4"/>
-        <TextBlock x:Name="SLevelLbl" Foreground="#FF9AA0A6" Margin="0,0,0,10"/>
-        <CheckBox x:Name="SSha" Content="Hash SHA-256" Foreground="#FFECECEC" Margin="0,2"/>
-        <CheckBox x:Name="SMd5" Content="Hash MD5" Foreground="#FFECECEC" Margin="0,2"/>
-        <CheckBox x:Name="SEmbed" Content="Embed manifest in archive" Foreground="#FFECECEC" Margin="0,2"/>
-      </StackPanel>
-    </Grid>
-    <CheckBox x:Name="SAuto" Content="Prompt automatically when a USB drive is connected" Foreground="#FFECECEC" Margin="0,4"/>
-    <CheckBox x:Name="SAll" Content="Select all folders/files by default" Foreground="#FFECECEC" Margin="0,4"/>
-    <CheckBox x:Name="SVerify" Content="Verify archive at destination after transfer (re-hash)" Foreground="#FFECECEC" Margin="0,4"/>
-    <CheckBox x:Name="SDelete" Content="Delete local staged archive after successful transfer" Foreground="#FFECECEC" Margin="0,4"/>
-    <TextBlock Text="Exclude patterns (comma separated)" Foreground="#FFECECEC" Margin="0,10,0,0"/>
-    <TextBox x:Name="SExcl" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
-    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-      <Button x:Name="SSave" Content="Save" Padding="14,6" Margin="4" Background="#FF2E7D32" Foreground="#FFECECEC"/>
-      <Button x:Name="SCancel" Content="Cancel" Padding="14,6" Margin="4" Background="#FF3A3A46" Foreground="#FFECECEC"/>
-    </StackPanel>
-  </StackPanel>
-  </ScrollViewer>
-</Window>
-"@
-    $sr = New-Object System.Xml.XmlNodeReader $sx
-    $dlg = [Windows.Markup.XamlReader]::Load($sr)
-    $dlg.Owner = $window
-    $g = { param($n) $dlg.FindName($n) }
+function Set-OptionsFromConfig {
+    $ctrl.OptNet.Text       = $config.NetworkShare
+    $ctrl.Opt7z.Text        = $config.SevenZipPath
+    $ctrl.OptStage.Text     = $config.StagingFolder
+    $ctrl.OptPrefix.Text    = $config.CasePrefix
+    $ctrl.OptVolume.Text    = [string]([int]$config.VolumeSizeMB)
+    $ctrl.OptLevel.Value    = [double]$config.CompressionLevel
+    $ctrl.OptLevelLbl.Text  = "Compression level: $([int]$config.CompressionLevel)"
+    $ctrl.OptPwd.Password   = [string]$config.Password
+    $ctrl.OptSha.IsChecked        = ($config.HashAlgorithms -contains 'SHA256')
+    $ctrl.OptMd5.IsChecked        = ($config.HashAlgorithms -contains 'MD5')
+    $ctrl.OptEmbed.IsChecked      = [bool]$config.EmbedManifest
+    $ctrl.OptVerify.IsChecked     = [bool]$config.VerifyAfterTransfer
+    $ctrl.OptDelete.IsChecked     = [bool]$config.DeleteLocalArchive
+    $ctrl.OptPrompt.IsChecked     = [bool]$config.AutoPromptOnInsert
+    $ctrl.OptSelDefault.IsChecked = [bool]$config.DefaultSelectAll
+    $ctrl.ChkAuto.IsChecked       = [bool]$config.AutoTransfer
+    $ctrl.OptExcl.Text            = ($config.ExcludePatterns -join ', ')
+    foreach ($it in $ctrl.OptFormat.Items) { if ($it.Content -eq $config.ArchiveFormat) { $ctrl.OptFormat.SelectedItem = $it } }
+}
 
-    (& $g 'SNet').Text    = $config.NetworkShare
-    (& $g 'S7z').Text     = $config.SevenZipPath
-    (& $g 'SStage').Text  = $config.StagingFolder
-    (& $g 'SPrefix').Text = $config.CasePrefix
-    (& $g 'SLevel').Value = [double]$config.CompressionLevel
-    (& $g 'SLevelLbl').Text = "Level $($config.CompressionLevel)"
-    (& $g 'SLevel').Add_ValueChanged({ (& $g 'SLevelLbl').Text = "Level $([int](& $g 'SLevel').Value)" })
-    (& $g 'SSha').IsChecked    = ($config.HashAlgorithms -contains 'SHA256')
-    (& $g 'SMd5').IsChecked    = ($config.HashAlgorithms -contains 'MD5')
-    (& $g 'SEmbed').IsChecked  = [bool]$config.EmbedManifest
-    (& $g 'SAuto').IsChecked   = [bool]$config.AutoPromptOnInsert
-    (& $g 'SAll').IsChecked    = [bool]$config.DefaultSelectAll
-    (& $g 'SVerify').IsChecked = [bool]$config.VerifyAfterTransfer
-    (& $g 'SDelete').IsChecked = [bool]$config.DeleteLocalArchive
-    (& $g 'SExcl').Text        = ($config.ExcludePatterns -join ', ')
-    (& $g 'SVolume').Text      = [string]([int]$config.VolumeSizeMB)
-    foreach ($it in (& $g 'SFormat').Items) { if ($it.Content -eq $config.ArchiveFormat) { (& $g 'SFormat').SelectedItem = $it } }
+function Sync-OptionsToConfig {
+    # Gather the on-screen options back into $config (does not persist to disk).
+    $config.NetworkShare  = $ctrl.OptNet.Text.Trim()
+    $config.SevenZipPath  = $ctrl.Opt7z.Text.Trim()
+    $config.StagingFolder = $ctrl.OptStage.Text.Trim()
+    if ($ctrl.OptPrefix.Text.Trim()) { $config.CasePrefix = $ctrl.OptPrefix.Text.Trim() }
+    if ($ctrl.OptFormat.SelectedItem) { $config.ArchiveFormat = $ctrl.OptFormat.SelectedItem.Content }
+    $vol = 0; [void][int]::TryParse($ctrl.OptVolume.Text.Trim(), [ref]$vol); if ($vol -lt 0) { $vol = 0 }
+    $config.VolumeSizeMB     = $vol
+    $config.CompressionLevel = [int]$ctrl.OptLevel.Value
+    $algs = @(); if ($ctrl.OptSha.IsChecked) { $algs += 'SHA256' }; if ($ctrl.OptMd5.IsChecked) { $algs += 'MD5' }
+    if ($algs.Count -eq 0) { $algs = @('SHA256') }
+    $config.HashAlgorithms      = $algs
+    $config.EmbedManifest       = [bool]$ctrl.OptEmbed.IsChecked
+    $config.VerifyAfterTransfer = [bool]$ctrl.OptVerify.IsChecked
+    $config.DeleteLocalArchive  = [bool]$ctrl.OptDelete.IsChecked
+    $config.AutoPromptOnInsert  = [bool]$ctrl.OptPrompt.IsChecked
+    $config.DefaultSelectAll    = [bool]$ctrl.OptSelDefault.IsChecked
+    $config.AutoTransfer        = [bool]$ctrl.ChkAuto.IsChecked
+    $config.ExcludePatterns     = @($ctrl.OptExcl.Text.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $config.Password            = $ctrl.OptPwd.Password
+    $script:Shared.Config       = $config
+}
 
-    (& $g 'SCancel').Add_Click({ $dlg.DialogResult = $false; $dlg.Close() })
-    (& $g 'SSave').Add_Click({
-        $config.NetworkShare        = (& $g 'SNet').Text.Trim()
-        $config.SevenZipPath        = (& $g 'S7z').Text.Trim()
-        $config.StagingFolder       = (& $g 'SStage').Text.Trim()
-        $config.CasePrefix          = (& $g 'SPrefix').Text.Trim()
-        $config.CompressionLevel    = [int](& $g 'SLevel').Value
-        $config.ArchiveFormat       = (& $g 'SFormat').SelectedItem.Content
-        $vol = 0; [void][int]::TryParse((& $g 'SVolume').Text.Trim(), [ref]$vol); if ($vol -lt 0) { $vol = 0 }
-        $config.VolumeSizeMB        = $vol
-        $config.Password            = (& $g 'SPwd').Password
-        $algs = @(); if ((& $g 'SSha').IsChecked) { $algs += 'SHA256' }; if ((& $g 'SMd5').IsChecked) { $algs += 'MD5' }
-        if ($algs.Count -eq 0) { $algs = @('SHA256') }
-        $config.HashAlgorithms      = $algs
-        $config.EmbedManifest       = [bool](& $g 'SEmbed').IsChecked
-        $config.AutoPromptOnInsert  = [bool](& $g 'SAuto').IsChecked
-        $config.DefaultSelectAll    = [bool](& $g 'SAll').IsChecked
-        $config.VerifyAfterTransfer = [bool](& $g 'SVerify').IsChecked
-        $config.DeleteLocalArchive  = [bool](& $g 'SDelete').IsChecked
-        $config.ExcludePatterns     = @((& $g 'SExcl').Text.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-        Save-A4950Config -Config $config | Out-Null
-        $script:Shared.Config = $config
-        $dlg.DialogResult = $true; $dlg.Close()
-    })
+function Save-Options {
+    Sync-OptionsToConfig
+    Save-A4950Config -Config $config | Out-Null
+    Update-Footer
+    Add-LogLine 'Options saved to config.json.' 'OK'
+    if ($config.Password) { Add-LogLine 'Archive password set (avoid storing sensitive passwords in plain config).' 'WARN' }
+}
 
-    if ($dlg.ShowDialog()) {
-        Add-LogLine 'Settings saved.' 'OK'
-        Update-Footer
-        # Keep password out of the on-disk config note.
-        if ($config.Password) { Add-LogLine 'Archive password set for this session (not stored in plain config recommended).' 'WARN' }
+# ----------------------------------------------------------------------------
+# Transfer identifier: CMS case (validated) OR OP name (UPPERCASE)
+# ----------------------------------------------------------------------------
+function Get-TransferName {
+    $case = $ctrl.TxtCase.Text.Trim()
+    $op   = $ctrl.TxtOp.Text.Trim()
+    $caseGiven = $case -and ($case -ne $config.CasePrefix)
+    if ($caseGiven) {
+        if (Test-A4950CaseNumber -CaseNumber $case -Prefix $config.CasePrefix) {
+            return [pscustomobject]@{ Ok = $true; Name = $case; Kind = 'CMS' }
+        }
+        return [pscustomobject]@{ Ok = $false; Name = $null; Reason = "CMS case must start with '$($config.CasePrefix)' and include an identifier, e.g. $($config.CasePrefix)12345." }
     }
+    if ($op) {
+        if (Test-A4950OpName -Name $op) {
+            return [pscustomobject]@{ Ok = $true; Name = $op; Kind = 'OP' }
+        }
+        return [pscustomobject]@{ Ok = $false; Name = $null; Reason = 'OP name must be UPPERCASE.' }
+    }
+    return [pscustomobject]@{ Ok = $false; Name = $null; Reason = "Enter a CMS case (e.g. $($config.CasePrefix)12345) or an OP name (UPPERCASE)." }
 }
 
 function Update-Footer {
     $sz = Resolve-SevenZip -PreferredPath $config.SevenZipPath
     if (-not $sz) { $sz = 'NOT FOUND' }
     $split = if ([int]$config.VolumeSizeMB -gt 0) { "Split: $([int]$config.VolumeSizeMB) MB" } else { 'Split: off' }
-    $ctrl.LblDest.Text = "Destination: $($config.NetworkShare)   |   7-Zip: $sz   |   Format: $($config.ArchiveFormat)  Level: $($config.CompressionLevel)  $split  Hash: $($config.HashAlgorithms -join '+')"
+    $auto  = if ($config.AutoTransfer) { 'Auto: ON' } else { 'Auto: off' }
+    $ctrl.LblDest.Text = "Dest: $($config.NetworkShare)   |   7-Zip: $sz   |   $($config.ArchiveFormat)  L$($config.CompressionLevel)  $split  Hash:$($config.HashAlgorithms -join '+')   |   $auto"
 }
 
 # ----------------------------------------------------------------------------
 # Start / cancel the capture job
 # ----------------------------------------------------------------------------
 function Start-Capture {
+    param([switch]$NoConfirm)
     if ($script:Shared.Running) { return }
 
-    $case = $ctrl.TxtCase.Text.Trim()
-    if (-not (Test-A4950CaseNumber -CaseNumber $case -Prefix $config.CasePrefix)) {
-        [System.Windows.MessageBox]::Show("Case number must start with '$($config.CasePrefix)' and include an identifier, e.g. $($config.CasePrefix)12345.",
-            'Invalid case number', 'OK', 'Warning') | Out-Null
+    # Apply the on-screen options first so the capture uses current settings.
+    Sync-OptionsToConfig
+
+    $tn = Get-TransferName
+    if (-not $tn.Ok) {
+        [System.Windows.MessageBox]::Show($tn.Reason, 'Identifier required', 'OK', 'Warning') | Out-Null
         return
     }
+    $name = $tn.Name
 
     $issues = Test-A4950Config -Config $config
     if ($issues.Count) {
@@ -505,19 +558,21 @@ function Start-Capture {
         return
     }
 
-    $confirm = [System.Windows.MessageBox]::Show(
-        "Capture $($items.Count) item(s) as case '$case'?`n`nSource : $(Get-SelectedDriveRoot)`nDest   : $(Join-Path $config.NetworkShare (New-A4950CaseFolderName $case))`n`nOriginals will be hashed ($($config.HashAlgorithms -join ' + ')), compressed and transferred.",
-        'Confirm capture', 'YesNo', 'Question')
-    if ($confirm -ne 'Yes') { return }
+    if (-not $NoConfirm) {
+        $confirm = [System.Windows.MessageBox]::Show(
+            "Capture $($items.Count) item(s) as '$name' ($($tn.Kind))?`n`nSource : $(Get-SelectedDriveRoot)`nDest   : $(Join-Path $config.NetworkShare (New-A4950CaseFolderName $name))`n`nOriginals will be hashed ($($config.HashAlgorithms -join ' + ')), compressed and transferred.",
+            'Confirm capture', 'YesNo', 'Question')
+        if ($confirm -ne 'Yes') { return }
+    }
 
     # Prepare shared state.
     $script:Shared.Config     = $config
-    $script:Shared.CaseNumber = $case
+    $script:Shared.CaseNumber = $name
     $script:Shared.DriveRoot  = Get-SelectedDriveRoot
     $script:Shared.Items      = @($items)
     $script:Shared.Cancel     = $false
     $script:Shared.Running    = $true
-    $caseSafe = New-A4950CaseFolderName $case
+    $caseSafe = New-A4950CaseFolderName $name
     $script:Shared.LogFile    = Join-Path ([Environment]::ExpandEnvironmentVariables($config.StagingFolder)) "$caseSafe\$caseSafe.log"
 
     # Launch worker runspace.
@@ -538,8 +593,8 @@ function Start-Capture {
 
     $ctrl.BtnStart.IsEnabled  = $false
     $ctrl.BtnCancel.IsEnabled = $true
-    $ctrl.StatusLine.Text = "Capturing case $case ..."
-    Add-LogLine "Capture started for $case." 'STEP'
+    $ctrl.StatusLine.Text = "Capturing $name ($($tn.Kind)) ..."
+    Add-LogLine "Capture started for $name ($($tn.Kind))." 'STEP'
 }
 
 function Stop-Capture {
@@ -609,18 +664,37 @@ $usbTimer.Interval = [TimeSpan]::FromMilliseconds(800)
 $usbTimer.Add_Tick({
     while ($script:UsbEvents.Count -gt 0) {
         $drive = $script:UsbEvents.Dequeue()
+        # Scan the new drive and list its folders/files for selection.
         Update-DriveList -Prefer $drive
         Update-TreeForDrive
-        Add-LogLine "USB drive connected: $drive" 'STEP'
-        $ctrl.StatusLine.Text = "USB drive $drive connected."
-        if ($config.AutoPromptOnInsert -and -not $script:Shared.Running) {
+        $n = (Get-CheckedItems).Count
+        Add-LogLine "USB drive connected: $drive - scanned, $n item(s) listed." 'STEP'
+        $ctrl.StatusLine.Text = "USB drive $drive connected and scanned."
+        if ($script:Shared.Running) { continue }
+
+        if ($ctrl.ChkAuto.IsChecked) {
+            # Auto-transfer: only needs a valid CMS case OR OP name.
+            $tn = Get-TransferName
+            if ($tn.Ok) {
+                Add-LogLine "Auto-transfer: starting '$($tn.Name)' ($($tn.Kind)) from $drive." 'STEP'
+                Start-Capture -NoConfirm
+            } else {
+                $window.Activate()
+                Add-LogLine "Auto-transfer is ON but needs an identifier. $($tn.Reason)" 'WARN'
+                [System.Windows.MessageBox]::Show(
+                    "USB drive $drive connected and scanned.`n`nAuto-transfer is ON but needs a CMS case or OP name.`n`n$($tn.Reason)",
+                    'Auto-transfer - identifier needed', 'OK', 'Warning') | Out-Null
+                if ($ctrl.TxtCase.Text.Trim() -eq $config.CasePrefix -or -not $ctrl.TxtCase.Text.Trim()) { $ctrl.TxtCase.Focus(); $ctrl.TxtCase.SelectAll() }
+            }
+        }
+        elseif ($ctrl.OptPrompt.IsChecked) {
             $window.Activate()
             $resp = [System.Windows.MessageBox]::Show(
-                "A USB drive ($drive) has been connected.`n`nDo you want to capture, hash, compress and transfer its contents now?",
+                "A USB drive ($drive) has been connected and scanned.`n`nReview the folders/files in the middle panel and choose what to transfer.`n`nEnter a CMS case or OP name and start now?",
                 'USB drive detected', 'YesNo', 'Question')
             if ($resp -eq 'Yes') {
                 $ctrl.TxtCase.Focus(); $ctrl.TxtCase.SelectAll()
-                Add-LogLine 'Enter a CMS case number and press "Start Capture".' 'INFO'
+                Add-LogLine 'Select folders/files, enter a CMS case or OP name, then press "Start Capture".' 'INFO'
             }
         }
     }
@@ -652,10 +726,26 @@ function Show-Help {
 Auto 49/50 - USB Compression & Transfer Tool
 
 WORKFLOW
-  1. Connect a USB drive. If auto-prompt is on you'll be asked to proceed.
-  2. Pick the source drive and tick the folders/files to capture (all by default).
-  3. Enter a CMS case number (must start with '$($config.CasePrefix)'), e.g. $($config.CasePrefix)12345.
-  4. Press "Start Capture". Confirm the Yes/No prompt.
+  1. Connect a USB drive. It is scanned automatically and its folders/files are
+     listed in the middle panel. Tick what to transfer (all by default); use
+     "Select All" / "Deselect All" or untick individual items.
+  2. Enter EITHER a CMS case number (must start with '$($config.CasePrefix)', e.g.
+     $($config.CasePrefix)12345) OR an OP NAME (must be UPPERCASE). If both are given the
+     CMS case wins.
+  3. Press "Start Capture" and confirm.
+
+AUTO-TRANSFER
+  Tick "Auto-transfer when a USB drive is plugged in". Then, as soon as a drive
+  is connected, the capture starts automatically with NO prompts - it only
+  requires that a valid CMS case OR OP name is already entered. If neither is
+  set you'll be asked to provide one.
+
+OPTIONS (all on the main screen, right-hand panel)
+  Network share, 7-Zip path, staging folder, case prefix, archive format,
+  volume/split size, compression level, password, hashing, manifest embedding,
+  verification, prompt-on-insert, select-all default, delete-local and exclude
+  patterns. Every option can be toggled/edited and "Save Options" persists them
+  to config.json. Options also apply immediately when you press Start.
 
 WHAT HAPPENS
   - Every original file is hashed (SHA-256 / MD5) into a manifest.
@@ -667,14 +757,10 @@ WHAT HAPPENS
   - Optionally the transferred archive is re-hashed at the destination to verify.
 
 NAMING
-  Destination folder and archive files are named from the case number:
+  Destination folder and archive files are named from the CMS case or OP name:
     <share>\$($config.CasePrefix)12345\$($config.CasePrefix)12345__<item>.$($config.ArchiveFormat)
   When split, volumes are suffixed .001, .002, ... (open the .001 in 7-Zip to
   reassemble; keep all parts together).
-
-SETTINGS
-  Network share, 7-Zip path, format, compression level, split/volume size,
-  hashing, verification and excludes are all in Settings and saved to config.json.
 
 SYSTEM MONITOR
   Live CPU, memory, network throughput and temp-folder free space.
@@ -688,21 +774,32 @@ See README.md and docs\USER_GUIDE.md for full documentation.
 # Wire up events
 # ----------------------------------------------------------------------------
 $ctrl.BtnRefresh.Add_Click({ Update-DriveList; Update-TreeForDrive; Add-LogLine 'Drives rescanned.' 'INFO' })
-$ctrl.BtnSettings.Add_Click({ Show-SettingsDialog })
 $ctrl.BtnHelp.Add_Click({ Show-Help })
 $ctrl.BtnStart.Add_Click({ Start-Capture })
 $ctrl.BtnCancel.Add_Click({ Stop-Capture })
 $ctrl.BtnSelectAll.Add_Click({ Set-AllChecks $true })
 $ctrl.BtnSelectNone.Add_Click({ Set-AllChecks $false })
+$ctrl.BtnSaveOptions.Add_Click({ Save-Options })
+$ctrl.OptLevel.Add_ValueChanged({ $ctrl.OptLevelLbl.Text = "Compression level: $([int]$ctrl.OptLevel.Value)" })
 $ctrl.CmbDrive.Add_SelectionChanged({ Update-TreeForDrive })
 $ctrl.TxtCase.Add_TextChanged({
-    $ok = Test-A4950CaseNumber -CaseNumber $ctrl.TxtCase.Text.Trim() -Prefix $config.CasePrefix
+    $t = $ctrl.TxtCase.Text.Trim()
+    $blank = (-not $t) -or ($t -eq $config.CasePrefix)
+    $ok = $blank -or (Test-A4950CaseNumber -CaseNumber $t -Prefix $config.CasePrefix)
     $ctrl.LblCaseHint.Foreground = $window.FindResource($(if ($ok) { 'Muted' } else { 'Accent' }))
-    $ctrl.LblCaseHint.Text = $(if ($ok) { 'Used as the destination folder and archive file names.' }
+    $ctrl.LblCaseHint.Text = $(if ($ok) { 'Folder / file name. Must start with the case prefix.' }
                               else { "Must start with '$($config.CasePrefix)' and include an identifier." })
+})
+$ctrl.TxtOp.Add_TextChanged({
+    $t = $ctrl.TxtOp.Text.Trim()
+    $ok = (-not $t) -or (Test-A4950OpName -Name $t)
+    $ctrl.LblOpHint.Foreground = $window.FindResource($(if ($ok) { 'Muted' } else { 'Accent' }))
+    $ctrl.LblOpHint.Text = $(if ($ok) { 'Optional. Used if no CMS case is given. Must be UPPERCASE.' }
+                             else { 'OP name must be UPPERCASE.' })
 })
 
 $window.Add_Loaded({
+    Set-OptionsFromConfig
     Update-DriveList
     Update-TreeForDrive
     Update-Footer
@@ -710,7 +807,7 @@ $window.Add_Loaded({
     $statsTimer.Start(); $pumpTimer.Start(); $usbTimer.Start()
     Add-LogLine 'Auto 49/50 ready.' 'OK'
     if (-not (Resolve-SevenZip -PreferredPath $config.SevenZipPath)) {
-        Add-LogLine '7-Zip not found. Install it (https://www.7-zip.org) or set the path in Settings.' 'ERROR'
+        Add-LogLine '7-Zip not found. Install it (https://www.7-zip.org) or set the 7-Zip path in Options.' 'ERROR'
     }
 })
 

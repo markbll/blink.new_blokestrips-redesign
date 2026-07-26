@@ -44,6 +44,7 @@ function Get-DefaultConfig {
         EmbedManifest       = $true                    # Include hash manifest inside each archive
         # --- Behaviour ---------------------------------------------------------
         AutoPromptOnInsert  = $true                    # Show the action prompt when a USB drive appears
+        AutoTransfer        = $false                   # Start automatically on insert if a CMS case / OP name is set
         DefaultSelectAll    = $true                    # Pre-select all folders/files by default
         VerifyAfterTransfer = $true                    # Re-hash the archive at destination
         DeleteLocalArchive  = $false                   # Remove staged archive after successful transfer
@@ -577,6 +578,19 @@ function Test-A4950CaseNumber {
     if (-not $CaseNumber.StartsWith($Prefix, [StringComparison]::OrdinalIgnoreCase)) { return $false }
     # Require at least one character after the prefix.
     return $CaseNumber.Length -gt $Prefix.Length
+}
+
+function Test-A4950OpName {
+    <#
+    .SYNOPSIS Validate an operator name: non-empty and entirely UPPERCASE.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Name)
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $false }
+    $t = $Name.Trim()
+    if ($t -cne $t.ToUpper()) { return $false }     # any lowercase letter fails
+    if ($t -notmatch '[A-Z0-9]') { return $false }  # must contain at least one letter/digit
+    return $true
 }
 
 function Write-A4950Log {
