@@ -16,10 +16,62 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-Import-Module (Join-Path $scriptRoot 'Modules\BlokeStrips.Core.psm1') -Force
+Import-Module (Join-Path $scriptRoot 'Modules\Auto4950.Core.psm1') -Force
 Add-Type -AssemblyName PresentationFramework, System.Windows.Forms
 
-$config     = Import-BsConfig
+# ----------------------------------------------------------------------------
+# Execution policy
+# ----------------------------------------------------------------------------
+# Auto 49/50 ships as unsigned .ps1 scripts. Windows' default execution policy
+# ('Restricted' on client editions) blocks them, so users otherwise have to
+# launch every time with '-ExecutionPolicy Bypass'. This offers to set a
+# per-user 'RemoteSigned' policy once (no administrator rights required), after
+# which the scripts can be launched by right-click -> "Run with PowerShell".
+function Set-A4950ExecutionPolicy {
+    $ok = @('RemoteSigned', 'Unrestricted', 'Bypass')
+    try { $effective = Get-ExecutionPolicy } catch { return }
+    if ($effective -in $ok) { return }   # already permissive enough
+
+    # If Group Policy is forcing the policy, CurrentUser cannot override it.
+    $mp = Get-ExecutionPolicy -Scope MachinePolicy
+    $up = Get-ExecutionPolicy -Scope UserPolicy
+    if ($mp -ne 'Undefined' -or $up -ne 'Undefined') {
+        [System.Windows.MessageBox]::Show(
+            "PowerShell's execution policy is '$effective', enforced by Group Policy " +
+            "(Machine='$mp', User='$up').`n`nA local override isn't possible. Either ask your " +
+            "administrator to allow 'RemoteSigned', or always launch the tool with:`n`n" +
+            "    powershell -ExecutionPolicy Bypass -File .\Start-Auto4950.ps1",
+            'Execution Policy (managed by Group Policy)', 'OK', 'Warning') | Out-Null
+        return
+    }
+
+    $ans = [System.Windows.MessageBox]::Show(
+        "PowerShell's execution policy is '$effective', which can block Auto 49/50 from running.`n`n" +
+        "Set it to 'RemoteSigned' for your user account now?`n`n" +
+        "- No administrator rights are required.`n" +
+        "- It only affects your account.`n" +
+        "- It lets locally-created scripts (this tool) run, while still requiring downloaded scripts to be signed.",
+        'Execution Policy', 'YesNo', 'Question')
+    if ($ans -ne 'Yes') { return }
+
+    try {
+        Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop
+        [System.Windows.MessageBox]::Show(
+            "Done. Your account's execution policy is now 'RemoteSigned'.`n`n" +
+            "You can now launch the tool by right-clicking Start-Auto4950.ps1 and choosing " +
+            "'Run with PowerShell'.",
+            'Execution Policy', 'OK', 'Information') | Out-Null
+    } catch {
+        [System.Windows.MessageBox]::Show(
+            "Couldn't change the policy automatically:`n$($_.Exception.Message)`n`n" +
+            "Run this once in a PowerShell window, then re-open Setup:`n`n" +
+            "    Set-ExecutionPolicy -Scope CurrentUser RemoteSigned",
+            'Execution Policy', 'OK', 'Error') | Out-Null
+    }
+}
+Set-A4950ExecutionPolicy
+
+$config     = Import-A4950Config
 $configPath = Get-ConfigPath
 
 [xml]$xaml = @"
@@ -160,14 +212,14 @@ foreach ($it in (& $g 'Fmt').Items) { if ($it.Content -eq $config.ArchiveFormat)
     $config.AutoPromptOnInsert  = [bool](& $g 'Auto').IsChecked
     $config.DefaultSelectAll    = [bool](& $g 'All').IsChecked
     $config.VerifyAfterTransfer = [bool](& $g 'Verify').IsChecked
-    Save-BsConfig -Config $config -Path $configPath | Out-Null
+    Save-A4950Config -Config $config -Path $configPath | Out-Null
 
-    $issues = Test-BsConfig -Config $config
+    $issues = Test-A4950Config -Config $config
     if ($issues.Count) {
         (& $g 'SaveStatus').Text = "Saved to $configPath (with warnings: $($issues -join '; '))"
         (& $g 'SaveStatus').Foreground = '#FFFFCA28'
     } else {
-        (& $g 'SaveStatus').Text = "Saved to $configPath. Configuration valid. You can close and run Start-BlokeStripsTransfer.ps1."
+        (& $g 'SaveStatus').Text = "Saved to $configPath. Configuration valid. You can close and run Start-Auto4950.ps1."
         (& $g 'SaveStatus').Foreground = '#FF66BB6A'
     }
 })

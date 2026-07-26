@@ -14,7 +14,7 @@
 
 .NOTES
     Requires: Windows PowerShell 5.1 (or PowerShell 7 on Windows) and 7-Zip.
-    Run:      Right-click -> "Run with PowerShell", or:  powershell -ExecutionPolicy Bypass -File .\Start-BlokeStripsTransfer.ps1
+    Run:      Right-click -> "Run with PowerShell", or:  powershell -ExecutionPolicy Bypass -File .\Start-Auto4950.ps1
 #>
 
 [CmdletBinding()]
@@ -25,15 +25,15 @@ param()
 # ----------------------------------------------------------------------------
 $ErrorActionPreference = 'Stop'
 $scriptRoot   = Split-Path -Parent $MyInvocation.MyCommand.Path
-$coreModule   = Join-Path $scriptRoot 'Modules\BlokeStrips.Core.psm1'
-$workerModule = Join-Path $scriptRoot 'Modules\BlokeStrips.Worker.psm1'
+$coreModule   = Join-Path $scriptRoot 'Modules\Auto4950.Core.psm1'
+$workerModule = Join-Path $scriptRoot 'Modules\Auto4950.Worker.psm1'
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
 Import-Module $coreModule   -Force
 Import-Module $workerModule -Force
 
-$config = Import-BsConfig
+$config = Import-A4950Config
 
 # Shared state used to talk to the background worker runspace.
 $script:Shared = [hashtable]::Synchronized(@{
@@ -455,7 +455,7 @@ function Show-SettingsDialog {
         $config.VerifyAfterTransfer = [bool](& $g 'SVerify').IsChecked
         $config.DeleteLocalArchive  = [bool](& $g 'SDelete').IsChecked
         $config.ExcludePatterns     = @((& $g 'SExcl').Text.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-        Save-BsConfig -Config $config | Out-Null
+        Save-A4950Config -Config $config | Out-Null
         $script:Shared.Config = $config
         $dlg.DialogResult = $true; $dlg.Close()
     })
@@ -481,13 +481,13 @@ function Start-Capture {
     if ($script:Shared.Running) { return }
 
     $case = $ctrl.TxtCase.Text.Trim()
-    if (-not (Test-BsCaseNumber -CaseNumber $case -Prefix $config.CasePrefix)) {
+    if (-not (Test-A4950CaseNumber -CaseNumber $case -Prefix $config.CasePrefix)) {
         [System.Windows.MessageBox]::Show("Case number must start with '$($config.CasePrefix)' and include an identifier, e.g. $($config.CasePrefix)12345.",
             'Invalid case number', 'OK', 'Warning') | Out-Null
         return
     }
 
-    $issues = Test-BsConfig -Config $config
+    $issues = Test-A4950Config -Config $config
     if ($issues.Count) {
         [System.Windows.MessageBox]::Show(($issues -join "`n"), 'Configuration problems', 'OK', 'Warning') | Out-Null
         return
@@ -500,7 +500,7 @@ function Start-Capture {
     }
 
     $confirm = [System.Windows.MessageBox]::Show(
-        "Capture $($items.Count) item(s) as case '$case'?`n`nSource : $(Get-SelectedDriveRoot)`nDest   : $(Join-Path $config.NetworkShare (New-BsCaseFolderName $case))`n`nOriginals will be hashed ($($config.HashAlgorithms -join ' + ')), compressed and transferred.",
+        "Capture $($items.Count) item(s) as case '$case'?`n`nSource : $(Get-SelectedDriveRoot)`nDest   : $(Join-Path $config.NetworkShare (New-A4950CaseFolderName $case))`n`nOriginals will be hashed ($($config.HashAlgorithms -join ' + ')), compressed and transferred.",
         'Confirm capture', 'YesNo', 'Question')
     if ($confirm -ne 'Yes') { return }
 
@@ -511,7 +511,7 @@ function Start-Capture {
     $script:Shared.Items      = @($items)
     $script:Shared.Cancel     = $false
     $script:Shared.Running    = $true
-    $caseSafe = New-BsCaseFolderName $case
+    $caseSafe = New-A4950CaseFolderName $case
     $script:Shared.LogFile    = Join-Path ([Environment]::ExpandEnvironmentVariables($config.StagingFolder)) "$caseSafe\$caseSafe.log"
 
     # Launch worker runspace.
@@ -526,7 +526,7 @@ function Start-Capture {
         param($core, $worker)
         Import-Module $core -Force
         Import-Module $worker -Force
-        Invoke-BsTransferJob -Shared $Shared
+        Invoke-A4950TransferJob -Shared $Shared
     }).AddArgument($coreModule).AddArgument($workerModule)
     $script:WorkerHandle = $script:WorkerPs.BeginInvoke()
 
@@ -563,7 +563,7 @@ $statsTimer.Add_Tick({
     $stagePath = [Environment]::ExpandEnvironmentVariables($config.StagingFolder)
     $tempQualifier = try { Split-Path -Qualifier $stagePath } catch { $env:SystemDrive }
     if (-not $tempQualifier) { $tempQualifier = $env:SystemDrive }
-    $s = Get-BsSystemStats -TempPath "$tempQualifier\" -Previous $script:PrevStats
+    $s = Get-A4950SystemStats -TempPath "$tempQualifier\" -Previous $script:PrevStats
     if (-not $s) { return }
     $ctrl.BarCpu.Value = $s.CpuPercent;  $ctrl.LblCpu.Text = "$($s.CpuPercent) %"
     $ctrl.BarMem.Value = $s.MemUsedPct;  $ctrl.LblMem.Text = "$($s.MemUsedPct) %  ($([int]$s.MemUsedMB) / $([int]$s.MemTotalMB) MB)"
@@ -628,7 +628,7 @@ function Register-UsbWatcher {
     try {
         # EventType 2 = device arrival.
         $query = "SELECT * FROM Win32_VolumeChangeEvent WHERE EventType = 2"
-        $script:UsbSubscription = Register-CimIndicationEvent -Query $query -SourceIdentifier 'BsUsbArrival' -MessageData $script:UsbEvents -Action {
+        $script:UsbSubscription = Register-CimIndicationEvent -Query $query -SourceIdentifier 'Auto4950UsbArrival' -MessageData $script:UsbEvents -Action {
             $drive = $Event.SourceEventArgs.NewEvent.DriveName
             if ($drive) { $Event.MessageData.Enqueue($drive) }
         } -ErrorAction Stop
@@ -686,7 +686,7 @@ $ctrl.BtnSelectAll.Add_Click({ Set-AllChecks $true })
 $ctrl.BtnSelectNone.Add_Click({ Set-AllChecks $false })
 $ctrl.CmbDrive.Add_SelectionChanged({ Update-TreeForDrive })
 $ctrl.TxtCase.Add_TextChanged({
-    $ok = Test-BsCaseNumber -CaseNumber $ctrl.TxtCase.Text.Trim() -Prefix $config.CasePrefix
+    $ok = Test-A4950CaseNumber -CaseNumber $ctrl.TxtCase.Text.Trim() -Prefix $config.CasePrefix
     $ctrl.LblCaseHint.Foreground = $window.FindResource($(if ($ok) { 'Muted' } else { 'Accent' }))
     $ctrl.LblCaseHint.Text = $(if ($ok) { 'Used as the destination folder and archive file names.' }
                               else { "Must start with '$($config.CasePrefix)' and include an identifier." })
@@ -707,7 +707,7 @@ $window.Add_Loaded({
 $window.Add_Closing({
     $statsTimer.Stop(); $pumpTimer.Stop(); $usbTimer.Stop()
     if ($script:Shared.Running) { $script:Shared.Cancel = $true }
-    Get-EventSubscriber -SourceIdentifier 'BsUsbArrival' -ErrorAction SilentlyContinue | Unregister-Event -ErrorAction SilentlyContinue
+    Get-EventSubscriber -SourceIdentifier 'Auto4950UsbArrival' -ErrorAction SilentlyContinue | Unregister-Event -ErrorAction SilentlyContinue
 })
 
 # ----------------------------------------------------------------------------

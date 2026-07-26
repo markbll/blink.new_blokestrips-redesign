@@ -9,14 +9,31 @@ to troubleshoot.
 
 1. Install **7-Zip** (<https://www.7-zip.org>).
 2. Run `Setup.ps1`:
+   - On first launch it checks PowerShell's **execution policy**. If scripts are
+     blocked it offers to set **`RemoteSigned` for your account** (no admin
+     rights). Click **Yes** once and future launches "just work".
    - Set the **network share** (UNC) and click **Test** — it checks the share is
      reachable *and* writable.
    - Click **Auto-detect** for 7-Zip (or browse to `7z.exe`).
    - Choose your **compression level**, **hashing** (SHA-256/MD5), and defaults.
    - **Save**. This writes `config.json`.
 
-If you can't run scripts, launch PowerShell and use:
-`powershell -ExecutionPolicy Bypass -File .\Setup.ps1`
+**Execution policy.** These scripts are unsigned. If you'd rather not let Setup
+change the policy, either set it once yourself:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+or bypass it per launch (changes nothing permanently):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Setup.ps1
+powershell -ExecutionPolicy Bypass -File .\Start-Auto4950.ps1
+```
+
+If the policy is locked by **Group Policy**, use the Bypass option — Setup
+detects this and will tell you.
 
 ---
 

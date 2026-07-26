@@ -13,7 +13,7 @@
         * Live system statistics (CPU, RAM, network, temp-folder space)
         * Structured logging
 
-    Author : BlokeStrips Tooling
+    Author : Auto4950 Tooling
     Licence : Internal use
 #>
 
@@ -46,7 +46,7 @@ function Get-DefaultConfig {
         DefaultSelectAll    = $true                    # Pre-select all folders/files by default
         VerifyAfterTransfer = $true                    # Re-hash the archive at destination
         DeleteLocalArchive  = $false                   # Remove staged archive after successful transfer
-        StagingFolder       = '$env:TEMP\BlokeStrips'  # Where archives are staged before transfer
+        StagingFolder       = '$env:TEMP\Auto4950'  # Where archives are staged before transfer
         # --- Excludes ----------------------------------------------------------
         ExcludePatterns     = @('System Volume Information', '$RECYCLE.BIN', 'Thumbs.db')
     }
@@ -59,7 +59,7 @@ function Get-ConfigPath {
     Join-Path $Root 'config.json'
 }
 
-function Import-BsConfig {
+function Import-A4950Config {
     <#
     .SYNOPSIS Load configuration from config.json, falling back to defaults.
     #>
@@ -85,7 +85,7 @@ function Import-BsConfig {
     return $config
 }
 
-function Save-BsConfig {
+function Save-A4950Config {
     <#
     .SYNOPSIS Persist configuration to config.json.
     #>
@@ -99,7 +99,7 @@ function Save-BsConfig {
     return $Path
 }
 
-function Test-BsConfig {
+function Test-A4950Config {
     <#
     .SYNOPSIS Validate a configuration object. Returns a list of problem strings (empty = OK).
     #>
@@ -229,7 +229,7 @@ function Resolve-SevenZip {
     return $null
 }
 
-function New-BsArchive {
+function New-A4950Archive {
     <#
     .SYNOPSIS Create a 7-Zip archive from a source path.
     .DESCRIPTION
@@ -292,7 +292,7 @@ function New-BsArchive {
 
 #region ------------------------------------------------------------ Hashing / manifest
 
-function Get-BsFileHashes {
+function Get-A4950FileHashes {
     <#
     .SYNOPSIS Compute the requested hash algorithms for a single file.
     .OUTPUTS Hashtable keyed by algorithm name.
@@ -313,7 +313,7 @@ function Get-BsFileHashes {
     return $out
 }
 
-function New-BsManifest {
+function New-A4950Manifest {
     <#
     .SYNOPSIS Hash every file under a source path and write a manifest file.
     .DESCRIPTION
@@ -342,7 +342,7 @@ function New-BsManifest {
     foreach ($f in $files) {
         $i++
         if ($OnProgress) { & $OnProgress $i $total $f.FullName }
-        $h = Get-BsFileHashes -Path $f.FullName -Algorithms $Algorithms
+        $h = Get-A4950FileHashes -Path $f.FullName -Algorithms $Algorithms
         $rel = $f.FullName
         if ($f.FullName.Length -gt $SourcePath.Length -and $f.FullName.StartsWith($SourcePath)) {
             $rel = $f.FullName.Substring($SourcePath.Length).TrimStart('\', '/')
@@ -359,7 +359,7 @@ function New-BsManifest {
 
     # Write a clear, forensics-friendly manifest.
     $sb = New-Object System.Text.StringBuilder
-    [void]$sb.AppendLine('BlokeStrips USB Transfer - Hash Manifest')
+    [void]$sb.AppendLine('Auto4950 USB Transfer - Hash Manifest')
     [void]$sb.AppendLine('========================================')
     [void]$sb.AppendLine("Case Number   : $CaseNumber")
     [void]$sb.AppendLine("Source        : $SourcePath")
@@ -397,7 +397,7 @@ function New-BsManifest {
 
 #region ------------------------------------------------------------ Transfer
 
-function Copy-BsToShare {
+function Copy-A4950ToShare {
     <#
     .SYNOPSIS Copy a file to the destination share, preferring robocopy for resilience.
     #>
@@ -432,7 +432,7 @@ function Copy-BsToShare {
     return $result
 }
 
-function Test-BsTransferIntegrity {
+function Test-A4950TransferIntegrity {
     <#
     .SYNOPSIS Verify a transferred file matches the source by SHA-256.
     #>
@@ -458,7 +458,7 @@ function Test-BsTransferIntegrity {
 
 #region ------------------------------------------------------------ System statistics
 
-function Get-BsSystemStats {
+function Get-A4950SystemStats {
     <#
     .SYNOPSIS Snapshot CPU %, memory, network throughput and temp-folder free space.
     .DESCRIPTION
@@ -532,7 +532,7 @@ function Get-BsSystemStats {
 
 #region ------------------------------------------------------------ Logging & utilities
 
-function New-BsCaseFolderName {
+function New-A4950CaseFolderName {
     <#
     .SYNOPSIS Sanitise a case number into a filesystem-safe name.
     #>
@@ -543,7 +543,7 @@ function New-BsCaseFolderName {
     ($CaseNumber -replace $pattern, '_').Trim()
 }
 
-function Test-BsCaseNumber {
+function Test-A4950CaseNumber {
     <#
     .SYNOPSIS Validate a case number against the required prefix.
     #>
@@ -558,7 +558,7 @@ function Test-BsCaseNumber {
     return $CaseNumber.Length -gt $Prefix.Length
 }
 
-function Write-BsLog {
+function Write-A4950Log {
     <#
     .SYNOPSIS Append a timestamped, levelled line to a log file.
     #>

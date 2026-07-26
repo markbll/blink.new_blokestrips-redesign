@@ -36,6 +36,36 @@ starts uploading while the next is still compressing.
 - **7-Zip** installed — <https://www.7-zip.org>. The tool auto-detects `7z.exe`;
   otherwise set its path in Settings.
 - Permission to write to the configured network share.
+- A PowerShell **execution policy** that allows local scripts to run (see below).
+
+---
+
+## Execution policy
+
+These scripts are **unsigned**, so Windows' default policy (`Restricted` on
+client editions) will block them. You have three options:
+
+1. **Let Setup fix it (recommended).** The first time you run `Setup.ps1`, it
+   detects a restrictive policy and offers to set **`RemoteSigned` for your user
+   account** — no administrator rights needed, and it only affects you. After
+   that you can just right-click the scripts → **Run with PowerShell**.
+
+2. **Set it yourself, once**, in a normal (non-admin) PowerShell window:
+
+   ```powershell
+   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+   ```
+
+3. **Bypass per launch** (nothing is changed permanently):
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\Setup.ps1
+   powershell -ExecutionPolicy Bypass -File .\Start-Auto4950.ps1
+   ```
+
+> If your organisation enforces the policy via **Group Policy**, option 1/2
+> can't override it — use option 3, or ask an administrator to allow
+> `RemoteSigned`. Setup detects this case and tells you.
 
 ---
 
@@ -46,7 +76,7 @@ starts uploading while the next is still compressing.
 powershell -ExecutionPolicy Bypass -File .\Setup.ps1
 
 # 2. Run the tool
-powershell -ExecutionPolicy Bypass -File .\Start-BlokeStripsTransfer.ps1
+powershell -ExecutionPolicy Bypass -File .\Start-Auto4950.ps1
 ```
 
 Or right-click either `.ps1` and choose **Run with PowerShell**.
@@ -74,10 +104,10 @@ original file's size, timestamp and SHA-256 / MD5 hashes.
 
 | File | Purpose |
 |---|---|
-| `Start-BlokeStripsTransfer.ps1` | Main GUI application (**Auto 49/50**) |
+| `Start-Auto4950.ps1` | Main GUI application (**Auto 49/50**) |
 | `Setup.ps1` | First-run / reconfiguration wizard |
-| `Modules/BlokeStrips.Core.psm1` | Config, 7-Zip, hashing, transfer, stats (UI-free) |
-| `Modules/BlokeStrips.Worker.psm1` | Background compress→transfer pipeline |
+| `Modules/Auto4950.Core.psm1` | Config, 7-Zip, hashing, transfer, stats (UI-free) |
+| `Modules/Auto4950.Worker.psm1` | Background compress→transfer pipeline |
 | `config.json` | Your saved settings (created by Setup) |
 | `config.example.json` | Template you can copy to `config.json` |
 | `docs/USER_GUIDE.md` | Full operator guide |
