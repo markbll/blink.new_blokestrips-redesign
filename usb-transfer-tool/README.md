@@ -17,18 +17,21 @@ starts uploading while the next is still compressing.
 |---|---|
 | Detect new USB drives | WMI `Win32_VolumeChangeEvent` watcher; the drive is scanned and listed on insert |
 | Prompt before acting | Yes/No dialog on insert (`AutoPromptOnInsert`), plus a final confirm |
-| Auto-transfer | Tick-box: start automatically on insert, needing only a CMS case **or** OP name |
-| Choose folders/files/drives | Checkbox tree of the drive; **all selected by default**; Select All / Deselect All |
-| CMS case number **or** OP name | CMS case (enforced `CMS-A…` prefix) **or** an **UPPERCASE** OP name; used for the folder and archive names |
-| All options on the main screen | Every setting (incl. **sizing**/volume split) is editable in the on-screen Options panel |
+| Auto-transfer | Tick-box: start automatically on insert, needing only a CMS case, OP name **or** pass number |
+| Choose folders/files/drives | Checkbox tree of the drive; **all selected by default**; Select All / Deselect All; drive Refresh |
+| CMS / OP / Pass in the name | CMS case (`CMS-A…`), **UPPERCASE** OP name, and operator **pass number** are combined into the folder/archive name |
+| Quick Transfer | One button applies the fastest settings (store, single zip, SHA-256 only, no re-verify) |
+| All options on the main screen | Every setting (incl. **sizing** dropdown) on the on-screen Options panel; **Browse…** pickers for share/staging/7-Zip |
 | Compress with 7-Zip | `7z.exe`, level 0–9, `zip` (default) or `7z`, optional AES-256 password |
-| Split into multiple files | Volumes of a configurable size (default **2 GB**); `0` = single file |
+| Split into multiple files | Split-size **dropdown** (presets or custom MB; default **2 GB**); `0` = single file |
 | SHA-256 + MD5 of originals | Per-file manifest (`.txt` + `.csv`), **embedded in the archive** |
 | Transfer to a network share | UNC path from config; robocopy with Copy-Item fallback |
-| Start transfer early (speed) | Producer/consumer pipeline: transfer begins after the first archive |
-| Settings in a separate file | `config.json` (see `config.example.json`) |
-| Task-Manager style stats | Live CPU, memory, network throughput, temp-folder free space |
-| Real-time events/log | Colour-coded activity log in the GUI + per-case `.log` file |
+| Start transfer early (speed) | Producer/consumer pipeline: transfer begins as soon as the first archive/volume is written |
+| Live transfer status | Per-file transfer status + running count on screen |
+| Instant cancel + cleanup | Cancel kills 7-Zip/robocopy in ~150 ms and deletes temp files |
+| Failed-transfer log | If some files were already sent, a "FAILED TRANSFER" log (names, hashes, times) is written and sent |
+| Full-screen GUI | The window opens maximised |
+| Real-time events/log | Colour-coded activity log (auto-scrolls) with hashes, file names, dates/times; per-case `.log` file |
 | Post-transfer verification | Re-hash the archive at the destination (SHA-256 match) |
 
 ---

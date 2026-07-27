@@ -45,6 +45,7 @@ $script:Shared = [hashtable]::Synchronized(@{
     WorkerModule = $workerModule
 })
 $script:PrevStats    = $null
+$script:XferOk       = 0
 $script:UsbEvents    = [System.Collections.Queue]::Synchronized([System.Collections.Queue]::new())
 $script:WorkerPs     = $null
 $script:WorkerRs     = $null
@@ -57,7 +58,7 @@ $script:WorkerHandle = $null
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Auto 49/50 - USB Compression &amp; Transfer Tool" Height="820" Width="1460"
-        WindowStartupLocation="CenterScreen" Background="#FF1E1E24" FontFamily="Segoe UI">
+        WindowStartupLocation="CenterScreen" WindowState="Maximized" Background="#FF1E1E24" FontFamily="Segoe UI">
   <Window.Resources>
     <SolidColorBrush x:Key="Panel"  Color="#FF2A2A33"/>
     <SolidColorBrush x:Key="Accent" Color="#FF4FC3F7"/>
@@ -115,6 +116,7 @@ $script:WorkerHandle = $null
           <TextBlock x:Name="StatusLine" Text="Idle - waiting for a USB drive to be connected." Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button x:Name="BtnQuick"    Content="Quick Transfer" Background="#FF7B5BD1"/>
           <Button x:Name="BtnRefresh"  Content="Rescan Drives"/>
           <Button x:Name="BtnHelp"     Content="Help"/>
         </StackPanel>
@@ -153,9 +155,14 @@ $script:WorkerHandle = $null
 
           <Separator Margin="0,6"/>
           <TextBlock Text="Job Progress" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,4,0,4"/>
-          <TextBlock x:Name="LblStage" Text="No job running" Foreground="{StaticResource Muted}"/>
+          <TextBlock x:Name="LblStage" Text="No job running" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
           <ProgressBar x:Name="BarJob" Height="16" Minimum="0" Maximum="100" Foreground="#FF66BB6A" Background="#FF20202A" Margin="0,4,0,0"/>
           <TextBlock x:Name="LblJob" Text="" Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
+
+          <TextBlock Text="Transfer Status" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,10,0,4"/>
+          <TextBlock x:Name="LblXfer" Text="Idle" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+          <ProgressBar x:Name="BarXfer" Height="12" Foreground="#FF4FC3F7" Background="#FF20202A" Margin="0,4,0,0"/>
+          <TextBlock x:Name="LblXferCount" Text="0 file(s) transferred" Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
         </StackPanel>
       </Border>
 
@@ -167,6 +174,7 @@ $script:WorkerHandle = $null
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
@@ -174,30 +182,42 @@ $script:WorkerHandle = $null
           <StackPanel Grid.Row="0">
             <TextBlock Text="CMS CASE NUMBER" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
             <TextBox x:Name="TxtCase" Text="CMS-A" Padding="6" FontSize="14"/>
-            <TextBlock x:Name="LblCaseHint" Text="Folder / file name. Must start with the case prefix." Foreground="{StaticResource Muted}" FontSize="11"/>
+            <TextBlock x:Name="LblCaseHint" Text="Part of the folder / file name. Must start with the case prefix." Foreground="{StaticResource Muted}" FontSize="11"/>
           </StackPanel>
 
-          <StackPanel Grid.Row="1" Margin="0,8,0,0">
-            <TextBlock Text="OP NAME (UPPERCASE)" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
-            <TextBox x:Name="TxtOp" Padding="6" FontSize="14" CharacterCasing="Upper"/>
-            <TextBlock x:Name="LblOpHint" Text="Optional. Used if no CMS case is given. Must be UPPERCASE." Foreground="{StaticResource Muted}" FontSize="11"/>
-          </StackPanel>
+          <Grid Grid.Row="1" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+              <TextBlock Text="OP NAME (UPPERCASE)" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
+              <TextBox x:Name="TxtOp" Padding="6" FontSize="14" CharacterCasing="Upper"/>
+              <TextBlock x:Name="LblOpHint" Text="UPPERCASE. Optional." Foreground="{StaticResource Muted}" FontSize="11"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Margin="6,0,0,0">
+              <TextBlock Text="PASS NUMBER" FontWeight="Bold" Foreground="{StaticResource Accent}"/>
+              <TextBox x:Name="TxtPass" Padding="6" FontSize="14"/>
+              <TextBlock x:Name="LblPassHint" Text="Operator's pass no. Optional." Foreground="{StaticResource Muted}" FontSize="11"/>
+            </StackPanel>
+          </Grid>
 
-          <CheckBox Grid.Row="2" x:Name="ChkAuto" Margin="0,8,0,0"
-                    Content="Auto-transfer when a USB drive is plugged in (needs CMS case or OP name)"/>
+          <TextBlock Grid.Row="2" x:Name="LblNamePreview" Text="File name: (enter a CMS case, OP name or pass number)"
+                     Foreground="{StaticResource Muted}" FontStyle="Italic" Margin="0,6,0,0" TextWrapping="Wrap"/>
 
-          <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,4">
+          <CheckBox Grid.Row="3" x:Name="ChkAuto" Margin="0,8,0,0"
+                    Content="Auto-transfer when a USB drive is plugged in (needs CMS case, OP name or pass no.)"/>
+
+          <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,8,0,4">
             <TextBlock Text="Drive:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <ComboBox x:Name="CmbDrive" Width="110" Foreground="#FF202020" VerticalAlignment="Center"/>
+            <ComboBox x:Name="CmbDrive" Width="100" Foreground="#FF202020" VerticalAlignment="Center"/>
+            <Button x:Name="BtnDriveRefresh" Content="Refresh"/>
             <Button x:Name="BtnSelectAll" Content="Select All"/>
             <Button x:Name="BtnSelectNone" Content="Deselect All"/>
           </StackPanel>
 
-          <Border Grid.Row="4" Background="#FF20202A" CornerRadius="6" Margin="0,4">
+          <Border Grid.Row="5" Background="#FF20202A" CornerRadius="6" Margin="0,4">
             <TreeView x:Name="TreeItems" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"/>
           </Border>
 
-          <TextBlock Grid.Row="5" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+          <TextBlock Grid.Row="6" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
         </Grid>
       </Border>
 
@@ -212,12 +232,21 @@ $script:WorkerHandle = $null
           <TextBlock Grid.Row="0" Text="OPTIONS" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,0,6"/>
           <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
             <StackPanel>
-              <TextBlock Text="Network share (UNC destination)"/>
-              <TextBox x:Name="OptNet"/>
+              <TextBlock Text="Network share / destination (UNC or folder)"/>
+              <DockPanel>
+                <Button x:Name="BtnBrowseNet" Content="Browse..." DockPanel.Dock="Right" Margin="6,2,0,8" Foreground="#FF202020"/>
+                <TextBox x:Name="OptNet"/>
+              </DockPanel>
               <TextBlock Text="7-Zip path (blank = auto-detect)"/>
-              <TextBox x:Name="Opt7z"/>
+              <DockPanel>
+                <Button x:Name="BtnBrowse7z" Content="Browse..." DockPanel.Dock="Right" Margin="6,2,0,8" Foreground="#FF202020"/>
+                <TextBox x:Name="Opt7z"/>
+              </DockPanel>
               <TextBlock Text="Staging folder (local temp)"/>
-              <TextBox x:Name="OptStage"/>
+              <DockPanel>
+                <Button x:Name="BtnBrowseStage" Content="Browse..." DockPanel.Dock="Right" Margin="6,2,0,8" Foreground="#FF202020"/>
+                <TextBox x:Name="OptStage"/>
+              </DockPanel>
               <TextBlock Text="CMS case prefix"/>
               <TextBox x:Name="OptPrefix"/>
 
@@ -225,8 +254,17 @@ $script:WorkerHandle = $null
               <TextBlock Text="SIZING / COMPRESSION" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,2,0,4"/>
               <TextBlock Text="Archive format"/>
               <ComboBox x:Name="OptFormat"><ComboBoxItem>zip</ComboBoxItem><ComboBoxItem>7z</ComboBoxItem></ComboBox>
-              <TextBlock Text="Split into volumes (MB, 0 = single file)"/>
-              <TextBox x:Name="OptVolume"/>
+              <TextBlock Text="Split size (per volume)"/>
+              <ComboBox x:Name="OptVolume" IsEditable="True">
+                <ComboBoxItem>No split (single file)</ComboBoxItem>
+                <ComboBoxItem>500</ComboBoxItem>
+                <ComboBoxItem>1024</ComboBoxItem>
+                <ComboBoxItem>2048</ComboBoxItem>
+                <ComboBoxItem>4096</ComboBoxItem>
+                <ComboBoxItem>5120</ComboBoxItem>
+                <ComboBoxItem>8192</ComboBoxItem>
+              </ComboBox>
+              <TextBlock Text="(value in MB; type a custom number or pick a preset)" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,0,0,6"/>
               <TextBlock x:Name="OptLevelLbl" Text="Compression level: 5"/>
               <Slider x:Name="OptLevel" Minimum="0" Maximum="9" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,4,0,8"/>
               <TextBlock Text="Password (AES-256, optional)"/>
@@ -317,6 +355,10 @@ function Add-LogLine {
     $run.Foreground = (New-Object System.Windows.Media.BrushConverter).ConvertFromString($colour)
     $para.Inlines.Add($run)
     $ctrl.TxtLog.Document.Blocks.Add($para)
+    # Keep the buffer bounded so long jobs stay responsive.
+    while ($ctrl.TxtLog.Document.Blocks.Count -gt 800) {
+        $ctrl.TxtLog.Document.Blocks.Remove($ctrl.TxtLog.Document.Blocks.FirstBlock)
+    }
     $ctrl.TxtLog.ScrollToEnd()
 }
 
@@ -451,7 +493,7 @@ function Set-OptionsFromConfig {
     $ctrl.Opt7z.Text        = $config.SevenZipPath
     $ctrl.OptStage.Text     = $config.StagingFolder
     $ctrl.OptPrefix.Text    = $config.CasePrefix
-    $ctrl.OptVolume.Text    = [string]([int]$config.VolumeSizeMB)
+    $ctrl.OptVolume.Text    = $(if ([int]$config.VolumeSizeMB -le 0) { 'No split (single file)' } else { [string]([int]$config.VolumeSizeMB) })
     $ctrl.OptLevel.Value    = [double]$config.CompressionLevel
     $ctrl.OptLevelLbl.Text  = "Compression level: $([int]$config.CompressionLevel)"
     $ctrl.OptPwd.Password   = [string]$config.Password
@@ -474,8 +516,7 @@ function Sync-OptionsToConfig {
     $config.StagingFolder = $ctrl.OptStage.Text.Trim()
     if ($ctrl.OptPrefix.Text.Trim()) { $config.CasePrefix = $ctrl.OptPrefix.Text.Trim() }
     if ($ctrl.OptFormat.SelectedItem) { $config.ArchiveFormat = $ctrl.OptFormat.SelectedItem.Content }
-    $vol = 0; [void][int]::TryParse($ctrl.OptVolume.Text.Trim(), [ref]$vol); if ($vol -lt 0) { $vol = 0 }
-    $config.VolumeSizeMB     = $vol
+    $config.VolumeSizeMB     = Parse-SplitMB ([string]$ctrl.OptVolume.Text)
     $config.CompressionLevel = [int]$ctrl.OptLevel.Value
     $algs = @(); if ($ctrl.OptSha.IsChecked) { $algs += 'SHA256' }; if ($ctrl.OptMd5.IsChecked) { $algs += 'MD5' }
     if ($algs.Count -eq 0) { $algs = @('SHA256') }
@@ -500,25 +541,95 @@ function Save-Options {
 }
 
 # ----------------------------------------------------------------------------
-# Transfer identifier: CMS case (validated) OR OP name (UPPERCASE)
+# Windows folder/file pickers for locations
+# ----------------------------------------------------------------------------
+function Select-Folder {
+    param([string]$Description, [string]$Start)
+    $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dlg.Description = $Description
+    $dlg.ShowNewFolderButton = $true
+    if ($Start -and (Test-Path -LiteralPath $Start)) { $dlg.SelectedPath = $Start }
+    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { return $dlg.SelectedPath }
+    return $null
+}
+
+function Select-SevenZipFile {
+    $dlg = New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Title  = 'Locate 7z.exe'
+    $dlg.Filter = '7-Zip executable (7z.exe;7za.exe)|7z.exe;7za.exe|Executables (*.exe)|*.exe'
+    foreach ($seed in @("$env:ProgramW6432\7-Zip", "$env:ProgramFiles\7-Zip", "${env:ProgramFiles(x86)}\7-Zip")) {
+        if ($seed -and (Test-Path -LiteralPath $seed)) { $dlg.InitialDirectory = $seed; break }
+    }
+    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { return $dlg.FileName }
+    return $null
+}
+
+# ----------------------------------------------------------------------------
+# Quick Transfer: apply the fastest settings
+# ----------------------------------------------------------------------------
+function Set-QuickTransfer {
+    # Fastest: store (no compression), single zip, SHA-256 only, no re-hash verify.
+    foreach ($it in $ctrl.OptFormat.Items) { if ($it.Content -eq 'zip') { $ctrl.OptFormat.SelectedItem = $it } }
+    $ctrl.OptLevel.Value = 0
+    $ctrl.OptLevelLbl.Text = 'Compression level: 0'
+    $ctrl.OptVolume.Text = 'No split (single file)'
+    $ctrl.OptSha.IsChecked    = $true
+    $ctrl.OptMd5.IsChecked    = $false
+    $ctrl.OptEmbed.IsChecked  = $true
+    $ctrl.OptVerify.IsChecked = $false
+    $ctrl.OptDelete.IsChecked = $false
+    Sync-OptionsToConfig
+    Update-Footer
+    Add-LogLine 'Quick Transfer: store (no compression), single zip, SHA-256 only, no re-verify - fastest throughput.' 'STEP'
+}
+
+# ----------------------------------------------------------------------------
+# Transfer identifier: any of CMS case (validated) / OP name (UPPERCASE) / Pass no.
+# The folder + archive names are built from whichever are supplied, joined by '_'.
 # ----------------------------------------------------------------------------
 function Get-TransferName {
     $case = $ctrl.TxtCase.Text.Trim()
     $op   = $ctrl.TxtOp.Text.Trim()
+    $pass = $ctrl.TxtPass.Text.Trim()
     $caseGiven = $case -and ($case -ne $config.CasePrefix)
+
+    $parts = @(); $kinds = @(); $errs = @()
     if ($caseGiven) {
-        if (Test-A4950CaseNumber -CaseNumber $case -Prefix $config.CasePrefix) {
-            return [pscustomobject]@{ Ok = $true; Name = $case; Kind = 'CMS' }
-        }
-        return [pscustomobject]@{ Ok = $false; Name = $null; Reason = "CMS case must start with '$($config.CasePrefix)' and include an identifier, e.g. $($config.CasePrefix)12345." }
+        if (Test-A4950CaseNumber -CaseNumber $case -Prefix $config.CasePrefix) { $parts += $case; $kinds += 'CMS' }
+        else { $errs += "CMS case must start with '$($config.CasePrefix)' and include an identifier." }
     }
     if ($op) {
-        if (Test-A4950OpName -Name $op) {
-            return [pscustomobject]@{ Ok = $true; Name = $op; Kind = 'OP' }
-        }
-        return [pscustomobject]@{ Ok = $false; Name = $null; Reason = 'OP name must be UPPERCASE.' }
+        if (Test-A4950OpName -Name $op) { $parts += $op; $kinds += 'OP' }
+        else { $errs += 'OP name must be UPPERCASE.' }
     }
-    return [pscustomobject]@{ Ok = $false; Name = $null; Reason = "Enter a CMS case (e.g. $($config.CasePrefix)12345) or an OP name (UPPERCASE)." }
+    if ($pass) {
+        $parts += ('PASS' + (New-A4950CaseFolderName -CaseNumber $pass)); $kinds += 'PASS'
+    }
+
+    if ($errs.Count) { return [pscustomobject]@{ Ok = $false; Name = $null; Kind = ''; Reason = ($errs -join ' ') } }
+    if ($parts.Count -eq 0) {
+        return [pscustomobject]@{ Ok = $false; Name = $null; Kind = ''; Reason = "Enter a CMS case (e.g. $($config.CasePrefix)12345), an OP name (UPPERCASE) or a pass number." }
+    }
+    return [pscustomobject]@{ Ok = $true; Name = ($parts -join '_'); Kind = ($kinds -join '+'); Reason = '' }
+}
+
+function Update-NamePreview {
+    $tn = Get-TransferName
+    if ($tn.Ok) {
+        $ctrl.LblNamePreview.Foreground = $window.FindResource('Muted')
+        $ctrl.LblNamePreview.Text = "File name: $($tn.Name)__<folder>.$($config.ArchiveFormat)"
+    } else {
+        $ctrl.LblNamePreview.Foreground = $window.FindResource('Accent')
+        $ctrl.LblNamePreview.Text = "File name: $($tn.Reason)"
+    }
+}
+
+function Parse-SplitMB {
+    param([string]$Text)
+    if (-not $Text) { return 0 }
+    if ($Text -match '(?i)no\s*split') { return 0 }
+    if ($Text -match '(\d+)') { return [int]$Matches[1] }
+    return 0
 }
 
 function Update-Footer {
@@ -558,12 +669,40 @@ function Start-Capture {
         return
     }
 
+    $caseSafe = New-A4950CaseFolderName $name
+
     if (-not $NoConfirm) {
-        $confirm = [System.Windows.MessageBox]::Show(
-            "Capture $($items.Count) item(s) as '$name' ($($tn.Kind))?`n`nSource : $(Get-SelectedDriveRoot)`nDest   : $(Join-Path $config.NetworkShare (New-A4950CaseFolderName $name))`n`nOriginals will be hashed ($($config.HashAlgorithms -join ' + ')), compressed and transferred.",
-            'Confirm capture', 'YesNo', 'Question')
+        # List the top-level folders/files, the destination folder and the zip names.
+        $fmt = $config.ArchiveFormat
+        $splitSuffix = if ([int]$config.VolumeSizeMB -gt 0) { ".001, .002, ..." } else { '' }
+        $lines = foreach ($it in $items) {
+            $leaf = Split-Path -Leaf ($it.TrimEnd('\','/'))
+            if (-not $leaf) { $leaf = 'root' }
+            "   - $leaf   ->   ${caseSafe}__$leaf.$fmt$splitSuffix"
+        }
+        $maxShow = 20
+        $shown = @($lines | Select-Object -First $maxShow)
+        if ($items.Count -gt $maxShow) { $shown += "   ... and $($items.Count - $maxShow) more" }
+        $destPath = Join-Path $config.NetworkShare $caseSafe
+        $msg = @"
+Capture $($items.Count) top-level item(s) as '$name' ($($tn.Kind))?
+
+Source drive : $(Get-SelectedDriveRoot)
+Destination  : $destPath
+
+Selected folders/files  ->  archive (zip) name:
+$($shown -join "`n")
+
+Originals will be hashed ($($config.HashAlgorithms -join ' + ')), compressed and transferred.
+"@
+        $confirm = [System.Windows.MessageBox]::Show($msg, 'Confirm capture', 'YesNo', 'Question')
         if ($confirm -ne 'Yes') { return }
     }
+
+    # Reset transfer status UI.
+    $ctrl.LblXfer.Text = 'Starting...'; $ctrl.LblXferCount.Text = '0 file(s) transferred'
+    $ctrl.BarXfer.IsIndeterminate = $false; $ctrl.BarXfer.Value = 0
+    $script:XferOk = 0
 
     # Prepare shared state.
     $script:Shared.Config     = $config
@@ -572,7 +711,6 @@ function Start-Capture {
     $script:Shared.Items      = @($items)
     $script:Shared.Cancel     = $false
     $script:Shared.Running    = $true
-    $caseSafe = New-A4950CaseFolderName $name
     $script:Shared.LogFile    = Join-Path ([Environment]::ExpandEnvironmentVariables($config.StagingFolder)) "$caseSafe\$caseSafe.log"
 
     # Launch worker runspace.
@@ -599,8 +737,12 @@ function Start-Capture {
 
 function Stop-Capture {
     if ($script:Shared.Running) {
-        $script:Shared.Cancel = $true
-        Add-LogLine 'Cancellation requested...' 'WARN'
+        $script:Shared.Cancel = $true      # worker kills 7-Zip/robocopy within ~150 ms
+        $ctrl.BtnCancel.IsEnabled = $false
+        $ctrl.StatusLine.Text = 'Cancelling - stopping processes and cleaning up temp...'
+        $ctrl.LblXfer.Text = 'Cancelling...'
+        $ctrl.BarXfer.IsIndeterminate = $false
+        Add-LogLine 'Cancel requested - killing active 7-Zip/robocopy and cleaning temp files...' 'WARN'
     }
 }
 
@@ -608,6 +750,8 @@ function Complete-Capture {
     $ctrl.BtnStart.IsEnabled  = $true
     $ctrl.BtnCancel.IsEnabled = $false
     $ctrl.StatusLine.Text = 'Idle - waiting for a USB drive to be connected.'
+    $ctrl.BarXfer.IsIndeterminate = $false
+    if ($ctrl.LblXfer.Text -notmatch 'complete|cancel') { $ctrl.LblXfer.Text = 'Idle' }
     if ($script:WorkerPs) {
         try { $script:WorkerPs.EndInvoke($script:WorkerHandle) } catch {}
         $script:WorkerPs.Dispose(); $script:WorkerRs.Dispose()
@@ -644,15 +788,36 @@ $pumpTimer.Add_Tick({
             'log' { Add-LogLine $m.Text $m.Level }
             'progress' {
                 switch ($m.Stage) {
-                    'item'     { $ctrl.LblStage.Text = "Item $($m.Current)/$($m.Total): $($m.Name)"; $ctrl.BarJob.Value = 0 }
-                    'hash'     { $ctrl.LblStage.Text = "Hashing: $($m.Name)"; if ($m.Total) { $ctrl.BarJob.Value = 100 * $m.Current / $m.Total } }
-                    'compress' { $ctrl.LblStage.Text = "Compressing: $($m.Name)"; $ctrl.BarJob.Value = $m.Percent; $ctrl.LblJob.Text = "$($m.Percent)%" }
+                    'item'     { $ctrl.LblStage.Text = "Item $($m.Current)/$($m.Total): $($m.Name)"; $ctrl.BarJob.IsIndeterminate = $false; $ctrl.BarJob.Value = 0; $ctrl.LblJob.Text = '' }
+                    'hash'     { $ctrl.LblStage.Text = "Hashing: $($m.Name)"; $ctrl.BarJob.IsIndeterminate = $false; if ($m.Total) { $ctrl.BarJob.Value = 100 * $m.Current / $m.Total } }
+                    'compress' {
+                        $ctrl.LblStage.Text = "Compressing: $($m.Name)"
+                        if ([int]$m.Percent -lt 0) { $ctrl.BarJob.IsIndeterminate = $true; $ctrl.LblJob.Text = 'working...' }
+                        else { $ctrl.BarJob.IsIndeterminate = $false; $ctrl.BarJob.Value = $m.Percent; $ctrl.LblJob.Text = "$($m.Percent)%" }
+                    }
+                    'xfer' {
+                        if ($m.Action -eq 'start') {
+                            $ctrl.LblXfer.Text = "Transferring: $($m.Name)"
+                            $ctrl.BarXfer.IsIndeterminate = $true
+                        } else {
+                            $ctrl.BarXfer.IsIndeterminate = $false; $ctrl.BarXfer.Value = 0
+                            if ($m.Ok) {
+                                $script:XferOk = [int]$script:XferOk + 1
+                                $ctrl.LblXfer.Text = "Transferred: $($m.Name)"
+                                $ctrl.LblXferCount.Text = "$($script:XferOk) file(s) transferred"
+                            } else {
+                                $ctrl.LblXfer.Text = "Transfer stopped: $($m.Name)"
+                            }
+                        }
+                    }
                 }
             }
             'done' {
                 if ($m.Error) { Add-LogLine "Job ended with error: $($m.Error)" 'ERROR' }
-                else { Add-LogLine "Job finished: $($m.Ok) transferred, $($m.Fail) failed. -> $($m.Destination)" ($(if ($m.Fail) {'WARN'} else {'OK'})) }
-                $ctrl.LblStage.Text = 'No job running'; $ctrl.BarJob.Value = 0; $ctrl.LblJob.Text = ''
+                elseif ($m.Cancelled) { Add-LogLine "Cancelled: $($m.Ok) file(s) transferred before stopping; temp cleaned up." 'WARN'; $ctrl.LblXfer.Text = "Cancelled ($($m.Ok) transferred)" }
+                else { Add-LogLine "Job finished: $($m.Ok) transferred, $($m.Fail) failed. -> $($m.Destination)" ($(if ($m.Fail) {'WARN'} else {'OK'})); $ctrl.LblXfer.Text = "Complete ($($m.Ok) transferred)" }
+                $ctrl.LblStage.Text = 'No job running'; $ctrl.BarJob.IsIndeterminate = $false; $ctrl.BarJob.Value = 0; $ctrl.LblJob.Text = ''
+                $ctrl.BarXfer.IsIndeterminate = $false; $ctrl.BarXfer.Value = 0
                 Complete-Capture
             }
         }
@@ -729,16 +894,27 @@ WORKFLOW
   1. Connect a USB drive. It is scanned automatically and its folders/files are
      listed in the middle panel. Tick what to transfer (all by default); use
      "Select All" / "Deselect All" or untick individual items.
-  2. Enter EITHER a CMS case number (must start with '$($config.CasePrefix)', e.g.
-     $($config.CasePrefix)12345) OR an OP NAME (must be UPPERCASE). If both are given the
-     CMS case wins.
-  3. Press "Start Capture" and confirm.
+  2. Fill in any of: CMS case (starts with '$($config.CasePrefix)'), OP NAME (UPPERCASE),
+     PASS NUMBER. Whatever you provide is combined into the folder/file name
+     (e.g. $($config.CasePrefix)12345_JBLOGGS_PASS4471). At least one is required.
+  3. Press "Start Capture" and confirm the summary (which lists the folders, the
+     destination and the zip names).
+
+QUICK TRANSFER
+  The "Quick Transfer" button applies the fastest settings (store / no
+  compression, single zip, SHA-256 only, no re-verify) for maximum throughput.
+
+CANCEL
+  "Cancel" is immediate: it kills the running 7-Zip/robocopy within a fraction
+  of a second and deletes the temp files. Any archives already copied stay on
+  the share, and a "FAILED TRANSFER" log listing them (with hashes and times)
+  is written and sent to the destination.
 
 AUTO-TRANSFER
   Tick "Auto-transfer when a USB drive is plugged in". Then, as soon as a drive
   is connected, the capture starts automatically with NO prompts - it only
-  requires that a valid CMS case OR OP name is already entered. If neither is
-  set you'll be asked to provide one.
+  requires that a valid CMS case, OP name or pass number is already entered.
+  If none is set you'll be asked to provide one.
 
 OPTIONS (all on the main screen, right-hand panel)
   Network share, 7-Zip path, staging folder, case prefix, archive format,
@@ -774,35 +950,44 @@ See README.md and docs\USER_GUIDE.md for full documentation.
 # Wire up events
 # ----------------------------------------------------------------------------
 $ctrl.BtnRefresh.Add_Click({ Update-DriveList; Update-TreeForDrive; Add-LogLine 'Drives rescanned.' 'INFO' })
+$ctrl.BtnDriveRefresh.Add_Click({ Update-DriveList; Update-TreeForDrive; Add-LogLine 'Drives refreshed.' 'INFO' })
 $ctrl.BtnHelp.Add_Click({ Show-Help })
+$ctrl.BtnQuick.Add_Click({ Set-QuickTransfer })
 $ctrl.BtnStart.Add_Click({ Start-Capture })
 $ctrl.BtnCancel.Add_Click({ Stop-Capture })
 $ctrl.BtnSelectAll.Add_Click({ Set-AllChecks $true })
 $ctrl.BtnSelectNone.Add_Click({ Set-AllChecks $false })
 $ctrl.BtnSaveOptions.Add_Click({ Save-Options })
+$ctrl.BtnBrowseNet.Add_Click({ $p = Select-Folder 'Select the destination / network share folder' $ctrl.OptNet.Text; if ($p) { $ctrl.OptNet.Text = $p } })
+$ctrl.BtnBrowseStage.Add_Click({ $p = Select-Folder 'Select the local staging folder' ([Environment]::ExpandEnvironmentVariables($ctrl.OptStage.Text)); if ($p) { $ctrl.OptStage.Text = $p } })
+$ctrl.BtnBrowse7z.Add_Click({ $p = Select-SevenZipFile; if ($p) { $ctrl.Opt7z.Text = $p } })
 $ctrl.OptLevel.Add_ValueChanged({ $ctrl.OptLevelLbl.Text = "Compression level: $([int]$ctrl.OptLevel.Value)" })
+$ctrl.OptFormat.Add_SelectionChanged({ if ($ctrl.OptFormat.SelectedItem) { $config.ArchiveFormat = $ctrl.OptFormat.SelectedItem.Content; Update-NamePreview } })
 $ctrl.CmbDrive.Add_SelectionChanged({ Update-TreeForDrive })
 $ctrl.TxtCase.Add_TextChanged({
     $t = $ctrl.TxtCase.Text.Trim()
     $blank = (-not $t) -or ($t -eq $config.CasePrefix)
     $ok = $blank -or (Test-A4950CaseNumber -CaseNumber $t -Prefix $config.CasePrefix)
     $ctrl.LblCaseHint.Foreground = $window.FindResource($(if ($ok) { 'Muted' } else { 'Accent' }))
-    $ctrl.LblCaseHint.Text = $(if ($ok) { 'Folder / file name. Must start with the case prefix.' }
+    $ctrl.LblCaseHint.Text = $(if ($ok) { 'Part of the folder / file name. Must start with the case prefix.' }
                               else { "Must start with '$($config.CasePrefix)' and include an identifier." })
+    Update-NamePreview
 })
 $ctrl.TxtOp.Add_TextChanged({
     $t = $ctrl.TxtOp.Text.Trim()
     $ok = (-not $t) -or (Test-A4950OpName -Name $t)
     $ctrl.LblOpHint.Foreground = $window.FindResource($(if ($ok) { 'Muted' } else { 'Accent' }))
-    $ctrl.LblOpHint.Text = $(if ($ok) { 'Optional. Used if no CMS case is given. Must be UPPERCASE.' }
-                             else { 'OP name must be UPPERCASE.' })
+    $ctrl.LblOpHint.Text = $(if ($ok) { 'UPPERCASE. Optional.' } else { 'Must be UPPERCASE.' })
+    Update-NamePreview
 })
+$ctrl.TxtPass.Add_TextChanged({ Update-NamePreview })
 
 $window.Add_Loaded({
     Set-OptionsFromConfig
     Update-DriveList
     Update-TreeForDrive
     Update-Footer
+    Update-NamePreview
     Register-UsbWatcher
     $statsTimer.Start(); $pumpTimer.Start(); $usbTimer.Start()
     Add-LogLine 'Auto 49/50 ready.' 'OK'

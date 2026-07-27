@@ -231,6 +231,66 @@ function Resolve-SevenZip {
     return $null
 }
 
+function Invoke-A4950Process {
+    <#
+    .SYNOPSIS Run an external process with cancellation support.
+    .DESCRIPTION
+        Starts a process, drains stdout/stderr asynchronously (no deadlock),
+        and polls -CancelCheck every 150 ms. On cancel it kills the whole
+        process tree so the operation stops almost immediately.
+        Returns @{ ExitCode; Cancelled; Output }.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [scriptblock]$CancelCheck
+    )
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    # Quote arguments that contain spaces or quotes so paths survive intact.
+    $psi.Arguments = (($Arguments | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+    }) -join ' ')
+    $psi.UseShellExecute        = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $psi.CreateNoWindow         = $true
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    [void]$proc.Start()
+
+    # Async drain prevents the child from blocking on a full pipe buffer.
+    $outTask = $proc.StandardOutput.ReadToEndAsync()
+    $errTask = $proc.StandardError.ReadToEndAsync()
+
+    $cancelled = $false
+    while (-not $proc.WaitForExit(150)) {
+        if ($CancelCheck -and (& $CancelCheck)) {
+            $cancelled = $true
+            try { & taskkill.exe /PID $proc.Id /T /F 2>$null | Out-Null } catch {}
+            try { if (-not $proc.HasExited) { $proc.Kill() } } catch {}
+            break
+        }
+    }
+    try { $proc.WaitForExit(3000) | Out-Null } catch {}
+
+    $out = ''
+    try { $out = $outTask.Result } catch {}
+    $err = ''
+    try { $err = $errTask.Result } catch {}
+    $exit = -1
+    try { $exit = $proc.ExitCode } catch {}
+    $proc.Dispose()
+
+    return [pscustomobject]@{
+        ExitCode  = $exit
+        Cancelled = $cancelled
+        Output    = ($out + "`n" + $err)
+    }
+}
+
 function New-A4950Archive {
     <#
     .SYNOPSIS Create a 7-Zip archive from a source path.
@@ -249,6 +309,7 @@ function New-A4950Archive {
         [string]$Password,
         [string[]]$ExcludePatterns,
         [string[]]$ExtraFiles,          # Additional files to add (e.g. the manifest)
+        [scriptblock]$CancelCheck,      # Return $true to abort (kills 7-Zip)
         [scriptblock]$OnOutput
     )
 
@@ -262,9 +323,9 @@ function New-A4950Archive {
     Get-ChildItem -LiteralPath $archiveDir -Filter "$archiveLeaf*" -ErrorAction SilentlyContinue |
         Remove-Item -Force -ErrorAction SilentlyContinue
 
-    # Build 7z argument list.  'a' = add, -mx = level, -t = type, -bsp1 = progress to stdout.
+    # Build 7z argument list.  'a' = add, -mx = level, -t = type.
     $szArgs = [System.Collections.Generic.List[string]]::new()
-    $szArgs.AddRange([string[]]@('a', "-t$Format", "-mx=$Level", '-bsp1', '-y', $ArchivePath, $SourcePath))
+    $szArgs.AddRange([string[]]@('a', "-t$Format", "-mx=$Level", '-y', $ArchivePath, $SourcePath))
     if ($Format -eq '7z') { $szArgs.Add('-mmt=on') }          # multi-threaded
     if ($VolumeSizeMB -gt 0) { $szArgs.Add("-v${VolumeSizeMB}m") }   # split into volumes
     if ($ExtraFiles)      { foreach ($ef in $ExtraFiles) { $szArgs.Add($ef) } }
@@ -278,22 +339,25 @@ function New-A4950Archive {
 
     $result = [pscustomobject]@{
         Success     = $false
+        Cancelled   = $false
         ArchivePath = $ArchivePath
         Files       = @()               # actual output file(s): the archive, or its volume parts
-        IsSplit      = ($VolumeSizeMB -gt 0)
+        IsSplit     = ($VolumeSizeMB -gt 0)
         ExitCode    = -1
         Output      = ''
     }
 
-    $sb = New-Object System.Text.StringBuilder
-    # Run inline so we can stream output for live logging.
-    & $SevenZipPath @szArgs 2>&1 | ForEach-Object {
-        $line = "$_"
-        [void]$sb.AppendLine($line)
-        if ($OnOutput) { & $OnOutput $line }
+    $run = Invoke-A4950Process -FilePath $SevenZipPath -Arguments $szArgs -CancelCheck $CancelCheck
+    $result.ExitCode  = $run.ExitCode
+    $result.Output    = $run.Output
+    $result.Cancelled = $run.Cancelled
+    if ($OnOutput -and $run.Output) { & $OnOutput $run.Output }
+    if ($run.Cancelled) {
+        # Remove any partial output so nothing half-written is left behind.
+        Get-ChildItem -LiteralPath $archiveDir -Filter "$archiveLeaf*" -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+        return $result
     }
-    $result.ExitCode = $LASTEXITCODE
-    $result.Output   = $sb.ToString()
 
     # Determine the produced file(s). With -v, 7-Zip writes <archive>.001, .002, ...
     if ($VolumeSizeMB -gt 0) {
@@ -422,11 +486,13 @@ function New-A4950Manifest {
 function Copy-A4950ToShare {
     <#
     .SYNOPSIS Copy a file to the destination share, preferring robocopy for resilience.
+    .DESCRIPTION Cancellable: -CancelCheck aborts and kills robocopy near-instantly.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$SourceFile,
         [Parameter(Mandatory)][string]$DestinationFolder,
+        [scriptblock]$CancelCheck,
         [scriptblock]$OnOutput
     )
 
@@ -436,22 +502,69 @@ function Copy-A4950ToShare {
 
     $srcDir  = Split-Path -Parent $SourceFile
     $srcName = Split-Path -Leaf   $SourceFile
-    $result  = [pscustomobject]@{ Success = $false; ExitCode = -1; Destination = (Join-Path $DestinationFolder $srcName) }
+    $result  = [pscustomobject]@{ Success = $false; Cancelled = $false; ExitCode = -1; Destination = (Join-Path $DestinationFolder $srcName) }
 
     $robocopy = Get-Command robocopy.exe -ErrorAction SilentlyContinue
     if ($robocopy) {
-        # /J unbuffered I/O = fast for large files, /R:3 /W:5 retry, /NP no per-% spam.
-        $rcArgs = @($srcDir, $DestinationFolder, $srcName, '/J', '/R:3', '/W:5', '/NP', '/NDL', '/NJH', '/NJS')
-        & $robocopy.Source @rcArgs 2>&1 | ForEach-Object { if ($OnOutput) { & $OnOutput "$_" } }
-        $result.ExitCode = $LASTEXITCODE
+        # /J unbuffered I/O = fast for large files, /R:2 /W:3 retry, quiet output.
+        $rcArgs = @($srcDir, $DestinationFolder, $srcName, '/J', '/R:2', '/W:3', '/NP', '/NDL', '/NJH', '/NJS')
+        $run = Invoke-A4950Process -FilePath $robocopy.Source -Arguments $rcArgs -CancelCheck $CancelCheck
+        $result.ExitCode  = $run.ExitCode
+        $result.Cancelled = $run.Cancelled
+        if ($OnOutput -and $run.Output) { & $OnOutput $run.Output }
         # Robocopy success codes are 0-7.
-        $result.Success = ($LASTEXITCODE -lt 8) -and (Test-Path -LiteralPath $result.Destination)
+        $result.Success = (-not $run.Cancelled) -and ($run.ExitCode -lt 8) -and (Test-Path -LiteralPath $result.Destination)
     } else {
-        Copy-Item -LiteralPath $SourceFile -Destination $result.Destination -Force
+        try { Copy-Item -LiteralPath $SourceFile -Destination $result.Destination -Force } catch {}
         $result.ExitCode = 0
         $result.Success = Test-Path -LiteralPath $result.Destination
     }
+    if ($result.Cancelled) {
+        # Remove a partially-copied destination file.
+        Remove-Item -LiteralPath $result.Destination -Force -ErrorAction SilentlyContinue
+    }
     return $result
+}
+
+function Write-A4950TransferLog {
+    <#
+    .SYNOPSIS Write a transfer log (optionally a "failed transfer" log) listing
+              the files that reached the destination, with hash, size and time.
+    .OUTPUTS The log file path.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$LogPath,
+        [Parameter(Mandatory)]$Records,       # objects: Name, Sha256, SizeBytes, TransferredUtc
+        [string]$Reference = '',
+        [switch]$Failed
+    )
+    $sb = New-Object System.Text.StringBuilder
+    if ($Failed) {
+        [void]$sb.AppendLine('*** THESE FILES ARE FROM A FAILED TRANSFER ***')
+        [void]$sb.AppendLine('The transfer was cancelled or did not complete. The files listed below')
+        [void]$sb.AppendLine('were already copied to the destination before it stopped.')
+    } else {
+        [void]$sb.AppendLine('Auto 49/50 - Transfer Log (completed)')
+    }
+    [void]$sb.AppendLine('==========================================================')
+    [void]$sb.AppendLine("Reference     : $Reference")
+    [void]$sb.AppendLine("Generated UTC : $([DateTime]::UtcNow.ToString('o'))")
+    [void]$sb.AppendLine("Machine       : $env:COMPUTERNAME")
+    [void]$sb.AppendLine("Operator      : $env:USERNAME")
+    [void]$sb.AppendLine("Files copied  : $(@($Records).Count)")
+    [void]$sb.AppendLine('')
+    foreach ($r in @($Records)) {
+        [void]$sb.AppendLine("FILE : $($r.Name)")
+        [void]$sb.AppendLine("  Size          : $($r.SizeBytes) bytes")
+        [void]$sb.AppendLine("  SHA-256       : $($r.Sha256)")
+        [void]$sb.AppendLine("  TransferredUTC: $($r.TransferredUtc)")
+        [void]$sb.AppendLine('')
+    }
+    $dir = Split-Path -Parent $LogPath
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $sb.ToString() | Set-Content -LiteralPath $LogPath -Encoding UTF8
+    return $LogPath
 }
 
 function Test-A4950TransferIntegrity {

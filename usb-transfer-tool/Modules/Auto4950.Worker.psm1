@@ -63,8 +63,11 @@ function Invoke-A4950TransferJob {
     $staging    = Join-Path ([Environment]::ExpandEnvironmentVariables($cfg.StagingFolder)) $caseSafe
     $destFolder = Join-Path $cfg.NetworkShare $caseSafe
 
+    # Cancel probe reused by 7-Zip and robocopy so both can be killed instantly.
+    $cancel = ({ [bool]$Shared.Cancel }).GetNewClosure()
+
     try {
-        Write-A4950WorkerLog $Shared "=== Job started for case $case ===" 'STEP'
+        Write-A4950WorkerLog $Shared "=== Job started for $case ===" 'STEP'
         Write-A4950WorkerLog $Shared "7-Zip      : $sevenZip"
         Write-A4950WorkerLog $Shared "Staging    : $staging"
         Write-A4950WorkerLog $Shared "Destination: $destFolder"
@@ -73,12 +76,13 @@ function Invoke-A4950TransferJob {
         if (-not $sevenZip) { throw '7-Zip executable not found. Aborting.' }
         if (-not (Test-Path -LiteralPath $staging)) { New-Item -ItemType Directory -Path $staging -Force | Out-Null }
 
-        # Thread-safe queue of archives ready to transfer.
-        $transferQueue = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
-        $producerDone  = [ref]$false
+        # Thread-safe queue of archives ready to transfer + a bag of results.
+        $transferQueue  = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
+        $producerDone   = [ref]$false
+        $consumerResult = [System.Collections.Concurrent.ConcurrentBag[object]]::new()
 
         # ---------------------------------------------------------------------
-        # Consumer runspace: transfers archives as they appear in the queue.
+        # Consumer runspace: hashes + transfers each archive as it appears.
         # ---------------------------------------------------------------------
         $iss = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
         $consumerRs = [runspacefactory]::CreateRunspace($iss)
@@ -87,41 +91,48 @@ function Invoke-A4950TransferJob {
         $consumerPs = [powershell]::Create()
         $consumerPs.Runspace = $consumerRs
 
-        $consumerResult = [System.Collections.Concurrent.ConcurrentBag[object]]::new()
-
         [void]$consumerPs.AddScript({
             param($Shared, $Queue, $ProducerDone, $DestFolder, $CoreModule, $WorkerModule, $ResultBag)
             Import-Module $CoreModule -Force
             Import-Module $WorkerModule -Force
             $cfg = $Shared.Config
+            $cancel = ({ [bool]$Shared.Cancel }).GetNewClosure()
             while ($true) {
                 if ($Shared.Cancel) { break }
                 $archive = $null
                 if ($Queue.TryDequeue([ref]$archive)) {
                     $name = Split-Path -Leaf $archive
+                    $size = 0; try { $size = (Get-Item -LiteralPath $archive).Length } catch {}
+                    $srcSha = ''; try { $srcSha = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash } catch {}
+                    Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='xfer'; Action='start'; Name=$name }
                     Write-A4950WorkerLog $Shared "Transferring: $name" 'STEP'
-                    $t = Copy-A4950ToShare -SourceFile $archive -DestinationFolder $DestFolder `
-                            -OnOutput ({ param($l) if ("$l".Trim()) { Send-A4950Event -Shared $Shared -Type 'log' -Data @{ Level='INFO'; Text = "  robocopy> $l" } } }.GetNewClosure())
+                    $t = Copy-A4950ToShare -SourceFile $archive -DestinationFolder $DestFolder -CancelCheck $cancel
+                    if ($t.Cancelled) {
+                        Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='xfer'; Action='done'; Name=$name; Ok=$false }
+                        break
+                    }
                     if ($t.Success) {
-                        Write-A4950WorkerLog $Shared "Transferred: $name" 'OK'
+                        $whenUtc = [DateTime]::UtcNow.ToString('o')
+                        Write-A4950WorkerLog $Shared "Transferred: $name  SHA256=$srcSha  ($whenUtc)" 'OK'
                         if ($cfg.VerifyAfterTransfer) {
-                            $v = Test-A4950TransferIntegrity -SourceFile $archive -DestinationFile $t.Destination
-                            if ($v.Match) { Write-A4950WorkerLog $Shared "Verified   : $name (SHA-256 match)" 'OK' }
-                            else          { Write-A4950WorkerLog $Shared "VERIFY FAIL: $name - $($v.Reason)" 'ERROR' }
+                            $d = ''; try { $d = (Get-FileHash -LiteralPath $t.Destination -Algorithm SHA256).Hash } catch {}
+                            if ($d -eq $srcSha -and $srcSha) { Write-A4950WorkerLog $Shared "Verified   : $name (SHA-256 match)" 'OK' }
+                            else { Write-A4950WorkerLog $Shared "VERIFY FAIL: $name (SHA-256 mismatch)" 'ERROR' }
                         }
                         if ($cfg.DeleteLocalArchive) {
                             Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
-                            Write-A4950WorkerLog $Shared "Cleaned    : local $name removed" 'INFO'
                         }
-                        $ResultBag.Add(@{ Archive = $name; Transferred = $true })
+                        $ResultBag.Add([pscustomobject]@{ Name=$name; Sha256=$srcSha; SizeBytes=$size; TransferredUtc=$whenUtc; Transferred=$true })
+                        Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='xfer'; Action='done'; Name=$name; Ok=$true }
                     } else {
                         Write-A4950WorkerLog $Shared "TRANSFER FAIL: $name (exit $($t.ExitCode))" 'ERROR'
-                        $ResultBag.Add(@{ Archive = $name; Transferred = $false })
+                        $ResultBag.Add([pscustomobject]@{ Name=$name; Sha256=$srcSha; SizeBytes=$size; TransferredUtc=''; Transferred=$false })
+                        Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='xfer'; Action='done'; Name=$name; Ok=$false }
                     }
                 } elseif ($ProducerDone.Value) {
                     break   # nothing left and producer finished
                 } else {
-                    Start-Sleep -Milliseconds 200
+                    Start-Sleep -Milliseconds 150
                 }
             }
         })
@@ -137,6 +148,8 @@ function Invoke-A4950TransferJob {
         # ---------------------------------------------------------------------
         # Producer: hash + compress each top-level item, enqueue for transfer.
         # ---------------------------------------------------------------------
+        $volMB = 0
+        try { $volMB = [int]$cfg.VolumeSizeMB } catch {}
         $totalItems = $items.Count
         $idx = 0
         foreach ($item in $items) {
@@ -156,6 +169,7 @@ function Invoke-A4950TransferJob {
                         -Algorithms $cfg.HashAlgorithms `
                         -OnProgress ({
                             param($c, $t, $f)
+                            if ($Shared.Cancel) { return }
                             if ($t -gt 0 -and ($c % 25 -eq 0 -or $c -eq $t)) {
                                 Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='hash'; Current=$c; Total=$t; Name=(Split-Path -Leaf $f) }
                             }
@@ -163,23 +177,19 @@ function Invoke-A4950TransferJob {
                 Write-A4950WorkerLog $Shared "Manifest   : $($m.FileCount) files hashed -> $(Split-Path -Leaf $manifestPath)" 'OK'
                 $extraFiles = @($manifestPath, $m.CsvPath)
             }
+            if ($Shared.Cancel) { break }
 
             # 2) Compress (with manifest embedded). Split into volumes if configured.
-            $volMB = 0
-            if ($cfg.PSObject.Properties['VolumeSizeMB']) { $volMB = [int]$cfg.VolumeSizeMB }
-            elseif ($cfg -is [System.Collections.IDictionary] -and $cfg.Contains('VolumeSizeMB')) { $volMB = [int]$cfg.VolumeSizeMB }
             $archivePath = Join-Path $staging ("{0}__{1}.{2}" -f $caseSafe, $itemName, $cfg.ArchiveFormat)
             $splitNote = if ($volMB -gt 0) { " split @ ${volMB} MB" } else { '' }
             Write-A4950WorkerLog $Shared "Compressing: $itemName -> $(Split-Path -Leaf $archivePath) (level $($cfg.CompressionLevel)$splitNote)" 'STEP'
+            Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=-1; Name=$itemName }
             $a = New-A4950Archive -SevenZipPath $sevenZip -SourcePath $item -ArchivePath $archivePath `
                     -Level $cfg.CompressionLevel -Format $cfg.ArchiveFormat -VolumeSizeMB $volMB -Password $cfg.Password `
-                    -ExcludePatterns $cfg.ExcludePatterns -ExtraFiles $extraFiles `
-                    -OnOutput ({
-                        param($l)
-                        if ("$l" -match '(\d+)%') {
-                            Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=[int]$Matches[1]; Name=$itemName }
-                        }
-                    }.GetNewClosure())
+                    -ExcludePatterns $cfg.ExcludePatterns -ExtraFiles $extraFiles -CancelCheck $cancel
+
+            if ($a.Cancelled) { Write-A4950WorkerLog $Shared "Compression cancelled: $itemName" 'WARN'; break }
+            Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=100; Name=$itemName }
 
             if ($a.Success) {
                 $parts = @($a.Files)
@@ -197,14 +207,44 @@ function Invoke-A4950TransferJob {
 
         # Signal producer completion and wait for the consumer to drain.
         $producerDone.Value = $true
-        Write-A4950WorkerLog $Shared 'All items compressed. Waiting for transfers to finish...' 'STEP'
-        $consumerPs.EndInvoke($consumerHandle)
+        if (-not $Shared.Cancel) { Write-A4950WorkerLog $Shared 'All items compressed. Waiting for transfers to finish...' 'STEP' }
+        try { $consumerPs.EndInvoke($consumerHandle) } catch {}
         $consumerPs.Dispose(); $consumerRs.Dispose()
 
-        $ok = ($consumerResult | Where-Object { $_.Transferred }).Count
-        $fail = ($consumerResult | Where-Object { -not $_.Transferred }).Count
-        Write-A4950WorkerLog $Shared "=== Job complete: $ok transferred, $fail failed ===" ($(if ($fail) {'WARN'} else {'OK'}))
-        Send-A4950Event -Shared $Shared -Type 'done' -Data @{ Ok = $ok; Fail = $fail; Destination = $destFolder }
+        $records = @($consumerResult)
+        $done    = @($records | Where-Object { $_.Transferred })
+        $ok      = $done.Count
+        $fail    = @($records | Where-Object { -not $_.Transferred }).Count
+        $cancelled = [bool]$Shared.Cancel
+
+        # ---------------------------------------------------------------------
+        # Transfer log. On cancel/failure it is marked "FAILED TRANSFER".
+        # ---------------------------------------------------------------------
+        if ($ok -gt 0) {
+            $isFailed = $cancelled -or ($fail -gt 0)
+            $logName  = if ($isFailed) { "${caseSafe}_FAILED_TRANSFER.log" } else { "${caseSafe}_TRANSFER.log" }
+            $logPath  = Join-Path $staging $logName
+            try {
+                Write-A4950TransferLog -LogPath $logPath -Records $done -Reference $case -Failed:$isFailed | Out-Null
+                # Copy the log to the destination (no cancel check - always send it).
+                $lt = Copy-A4950ToShare -SourceFile $logPath -DestinationFolder $destFolder
+                if ($lt.Success) { Write-A4950WorkerLog $Shared "Transfer log written and sent: $logName" ($(if ($isFailed) {'WARN'} else {'OK'})) }
+            } catch { Write-A4950WorkerLog $Shared "Could not write/send transfer log: $($_.Exception.Message)" 'ERROR' }
+        }
+
+        # ---------------------------------------------------------------------
+        # Cleanup staging on cancel (remove temp/partial files).
+        # ---------------------------------------------------------------------
+        if ($cancelled) {
+            try {
+                Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+                Write-A4950WorkerLog $Shared "Cleaned up temp files: $staging" 'INFO'
+            } catch {}
+            Write-A4950WorkerLog $Shared "=== CANCELLED: $ok file(s) already transferred, temp cleaned ===" 'WARN'
+        } else {
+            Write-A4950WorkerLog $Shared "=== Job complete: $ok transferred, $fail failed ===" ($(if ($fail) {'WARN'} else {'OK'}))
+        }
+        Send-A4950Event -Shared $Shared -Type 'done' -Data @{ Ok = $ok; Fail = $fail; Cancelled = $cancelled; Destination = $destFolder }
     }
     catch {
         Write-A4950WorkerLog $Shared "FATAL: $($_.Exception.Message)" 'ERROR'
