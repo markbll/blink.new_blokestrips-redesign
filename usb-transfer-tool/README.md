@@ -20,7 +20,7 @@ starts uploading while the next is still compressing.
 | Auto-transfer | Tick-box: start automatically on insert, needing only a CMS case, OP name **or** pass number |
 | Choose folders/files/drives | Checkbox tree of the drive; **all selected by default**; Select All / Deselect All; drive Refresh |
 | CMS / OP / Pass in the name | CMS case (`CMS-A…`), **UPPERCASE** OP name, and operator **pass number** are combined into the folder/archive name |
-| Quick Transfer | One button applies the fastest settings (store, single zip, SHA-256 only, no re-verify) |
+| Quick Transfer | One button applies the fastest settings (store, single file, **no hashing, no manifest, no verify**) — warns first that integrity is not recorded |
 | All options on the main screen | Every setting (incl. **sizing** dropdown) on the on-screen Options panel; **Browse…** pickers for share/staging/7-Zip |
 | Compress with 7-Zip | `7z.exe`, level 0–9, `zip` (default) or `7z`, optional AES-256 password |
 | Split into multiple files | Split-size **dropdown** (presets or custom MB; default **2 GB**); `0` = single file |

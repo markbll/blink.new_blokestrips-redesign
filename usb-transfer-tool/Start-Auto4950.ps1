@@ -568,19 +568,33 @@ function Select-SevenZipFile {
 # Quick Transfer: apply the fastest settings
 # ----------------------------------------------------------------------------
 function Set-QuickTransfer {
-    # Fastest: store (no compression), single zip, SHA-256 only, no re-hash verify.
+    # Warn first: Quick Transfer trades integrity for raw speed.
+    $warn = [System.Windows.MessageBox]::Show(
+        "QUICK TRANSFER - fastest settings`n`n" +
+        "This applies the quickest possible transfer:`n" +
+        "  - Store (NO compression)`n" +
+        "  - Single file (NO splitting)`n" +
+        "  - NO hashing  (SHA-256 / MD5 will NOT be calculated)`n" +
+        "  - NO manifest`n" +
+        "  - NO verification at the destination`n`n" +
+        "File integrity will NOT be recorded or verified. Use this only when speed " +
+        "matters more than a hash record.`n`nApply Quick Transfer settings?",
+        'Quick Transfer - integrity disabled', 'YesNo', 'Warning')
+    if ($warn -ne 'Yes') { Add-LogLine 'Quick Transfer cancelled - settings unchanged.' 'INFO'; return }
+
+    # Fastest: store (no compression), single file, no hashing, no manifest, no verify.
     foreach ($it in $ctrl.OptFormat.Items) { if ($it.Content -eq 'zip') { $ctrl.OptFormat.SelectedItem = $it } }
     $ctrl.OptLevel.Value = 0
     $ctrl.OptLevelLbl.Text = 'Compression level: 0'
     $ctrl.OptVolume.Text = 'No split (single file)'
-    $ctrl.OptSha.IsChecked    = $true
+    $ctrl.OptSha.IsChecked    = $false
     $ctrl.OptMd5.IsChecked    = $false
-    $ctrl.OptEmbed.IsChecked  = $true
-    $ctrl.OptVerify.IsChecked = $false
+    $ctrl.OptEmbed.IsChecked  = $false   # no manifest -> originals are not hashed
+    $ctrl.OptVerify.IsChecked = $false   # no re-hash at destination
     $ctrl.OptDelete.IsChecked = $false
     Sync-OptionsToConfig
     Update-Footer
-    Add-LogLine 'Quick Transfer: store (no compression), single zip, SHA-256 only, no re-verify - fastest throughput.' 'STEP'
+    Add-LogLine 'Quick Transfer ON: store (no compression), single file, NO hashing, NO verify - fastest throughput.' 'WARN'
 }
 
 # ----------------------------------------------------------------------------
@@ -637,7 +651,9 @@ function Update-Footer {
     if (-not $sz) { $sz = 'NOT FOUND' }
     $split = if ([int]$config.VolumeSizeMB -gt 0) { "Split: $([int]$config.VolumeSizeMB) MB" } else { 'Split: off' }
     $auto  = if ($config.AutoTransfer) { 'Auto: ON' } else { 'Auto: off' }
-    $ctrl.LblDest.Text = "Dest: $($config.NetworkShare)   |   7-Zip: $sz   |   $($config.ArchiveFormat)  L$($config.CompressionLevel)  $split  Hash:$($config.HashAlgorithms -join '+')   |   $auto"
+    $hash  = if ($config.EmbedManifest) { "Hash:$($config.HashAlgorithms -join '+')" } else { 'Hash:OFF' }
+    $vfy   = if ($config.VerifyAfterTransfer) { 'Verify:on' } else { 'Verify:off' }
+    $ctrl.LblDest.Text = "Dest: $($config.NetworkShare)   |   7-Zip: $sz   |   $($config.ArchiveFormat)  L$($config.CompressionLevel)  $split  $hash  $vfy   |   $auto"
 }
 
 # ----------------------------------------------------------------------------
@@ -684,16 +700,22 @@ function Start-Capture {
         $shown = @($lines | Select-Object -First $maxShow)
         if ($items.Count -gt $maxShow) { $shown += "   ... and $($items.Count - $maxShow) more" }
         $destPath = Join-Path $config.NetworkShare $caseSafe
+        $integrity = if ($config.EmbedManifest) {
+            "Originals will be hashed ($($config.HashAlgorithms -join ' + '))" +
+            $(if ($config.VerifyAfterTransfer) { ' and verified at the destination' } else { ' (no destination verify)' }) + '.'
+        } else {
+            "WARNING: Quick Transfer - NO hashing and NO verification. File integrity will not be recorded."
+        }
         $msg = @"
 Capture $($items.Count) top-level item(s) as '$name' ($($tn.Kind))?
 
 Source drive : $(Get-SelectedDriveRoot)
 Destination  : $destPath
 
-Selected folders/files  ->  archive (zip) name:
+Selected folders/files  ->  archive name:
 $($shown -join "`n")
 
-Originals will be hashed ($($config.HashAlgorithms -join ' + ')), compressed and transferred.
+$integrity
 "@
         $confirm = [System.Windows.MessageBox]::Show($msg, 'Confirm capture', 'YesNo', 'Question')
         if ($confirm -ne 'Yes') { return }
@@ -901,8 +923,11 @@ WORKFLOW
      destination and the zip names).
 
 QUICK TRANSFER
-  The "Quick Transfer" button applies the fastest settings (store / no
-  compression, single zip, SHA-256 only, no re-verify) for maximum throughput.
+  The "Quick Transfer" button applies the fastest possible settings: store (no
+  compression), single file (no splitting), NO hashing (SHA-256/MD5 are not
+  calculated), no manifest and no verification. It warns you first, because file
+  integrity is neither recorded nor verified in this mode. Use it only when raw
+  transfer speed matters more than a hash record.
 
 CANCEL
   "Cancel" is immediate: it kills the running 7-Zip/robocopy within a fraction

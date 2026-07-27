@@ -103,7 +103,12 @@ function Invoke-A4950TransferJob {
                 if ($Queue.TryDequeue([ref]$archive)) {
                     $name = Split-Path -Leaf $archive
                     $size = 0; try { $size = (Get-Item -LiteralPath $archive).Length } catch {}
-                    $srcSha = ''; try { $srcSha = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash } catch {}
+                    # Only hash the archive when integrity is actually wanted (verify or manifest).
+                    # In Quick Transfer both are off, so NO hashing is performed here.
+                    $srcSha = ''
+                    if ($cfg.VerifyAfterTransfer -or $cfg.EmbedManifest) {
+                        try { $srcSha = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash } catch {}
+                    }
                     Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='xfer'; Action='start'; Name=$name }
                     Write-A4950WorkerLog $Shared "Transferring: $name" 'STEP'
                     $t = Copy-A4950ToShare -SourceFile $archive -DestinationFolder $DestFolder -CancelCheck $cancel
@@ -113,7 +118,8 @@ function Invoke-A4950TransferJob {
                     }
                     if ($t.Success) {
                         $whenUtc = [DateTime]::UtcNow.ToString('o')
-                        Write-A4950WorkerLog $Shared "Transferred: $name  SHA256=$srcSha  ($whenUtc)" 'OK'
+                        $shaText = if ($srcSha) { "SHA256=$srcSha" } else { 'SHA256=(not calculated - quick transfer)' }
+                        Write-A4950WorkerLog $Shared "Transferred: $name  $shaText  ($whenUtc)" 'OK'
                         if ($cfg.VerifyAfterTransfer) {
                             $d = ''; try { $d = (Get-FileHash -LiteralPath $t.Destination -Algorithm SHA256).Hash } catch {}
                             if ($d -eq $srcSha -and $srcSha) { Write-A4950WorkerLog $Shared "Verified   : $name (SHA-256 match)" 'OK' }
