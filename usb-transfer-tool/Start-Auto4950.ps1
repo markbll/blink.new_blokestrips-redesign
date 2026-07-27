@@ -24,6 +24,7 @@ param()
 # Bootstrapping
 # ----------------------------------------------------------------------------
 $ErrorActionPreference = 'Stop'
+$script:AppVersion = '1.0.0'
 $scriptRoot   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $coreModule   = Join-Path $scriptRoot 'Modules\Auto4950.Core.psm1'
 $workerModule = Join-Path $scriptRoot 'Modules\Auto4950.Worker.psm1'
@@ -110,9 +111,12 @@ $script:WorkerHandle = $null
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <StackPanel VerticalAlignment="Center">
-          <TextBlock FontSize="22" FontWeight="Bold">
-            <Run Text="Auto " Foreground="{StaticResource Text}"/><Run Text="49/50" Foreground="{StaticResource Accent}"/>
-          </TextBlock>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock FontSize="22" FontWeight="Bold">
+              <Run Text="Auto " Foreground="{StaticResource Text}"/><Run Text="49/50" Foreground="{StaticResource Accent}"/>
+            </TextBlock>
+            <TextBlock x:Name="LblVersion" Text="v0.0.0" Foreground="{StaticResource Muted}" FontSize="12" VerticalAlignment="Bottom" Margin="8,0,0,4"/>
+          </StackPanel>
           <TextBlock x:Name="StatusLine" Text="Idle - waiting for a USB drive to be connected." Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -910,7 +914,7 @@ function Register-UsbWatcher {
 # ----------------------------------------------------------------------------
 function Show-Help {
     $msg = @"
-Auto 49/50 - USB Compression & Transfer Tool
+Auto 49/50  (version $script:AppVersion) - USB Compression & Transfer Tool
 
 WORKFLOW
   1. Connect a USB drive. It is scanned automatically and its folders/files are
@@ -1008,6 +1012,8 @@ $ctrl.TxtOp.Add_TextChanged({
 $ctrl.TxtPass.Add_TextChanged({ Update-NamePreview })
 
 $window.Add_Loaded({
+    $ctrl.LblVersion.Text = "v$script:AppVersion"
+    $window.Title = "Auto 49/50 v$script:AppVersion - USB Compression & Transfer Tool"
     Set-OptionsFromConfig
     Update-DriveList
     Update-TreeForDrive
@@ -1015,7 +1021,7 @@ $window.Add_Loaded({
     Update-NamePreview
     Register-UsbWatcher
     $statsTimer.Start(); $pumpTimer.Start(); $usbTimer.Start()
-    Add-LogLine 'Auto 49/50 ready.' 'OK'
+    Add-LogLine "Auto 49/50 v$script:AppVersion ready." 'OK'
     if (-not (Resolve-SevenZip -PreferredPath $config.SevenZipPath)) {
         Add-LogLine '7-Zip not found. Install it (https://www.7-zip.org) or set the 7-Zip path in Options.' 'ERROR'
     }
