@@ -65,6 +65,8 @@ function Invoke-A4950TransferJob {
 
     # Cancel probe reused by 7-Zip and robocopy so both can be killed instantly.
     $cancel = ({ [bool]$Shared.Cancel }).GetNewClosure()
+    # Job-wide stamp used to de-dupe destination names that already exist.
+    $Shared.Stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 
     try {
         Write-A4950WorkerLog $Shared "=== Job started for $case ===" 'STEP'
@@ -101,6 +103,7 @@ function Invoke-A4950TransferJob {
                 if ($Shared.Cancel) { break }
                 $archive = $null
                 if ($Queue.TryDequeue([ref]$archive)) {
+                  try {
                     $name = Split-Path -Leaf $archive
                     $size = 0; try { $size = (Get-Item -LiteralPath $archive).Length } catch {}
                     # Only hash the archive when integrity is actually wanted (verify or manifest).
@@ -111,30 +114,38 @@ function Invoke-A4950TransferJob {
                     }
                     Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='xfer'; Action='start'; Name=$name }
                     Write-A4950WorkerLog $Shared "Transferring: $name" 'STEP'
-                    $t = Copy-A4950ToShare -SourceFile $archive -DestinationFolder $DestFolder -CancelCheck $cancel
+                    $t = Copy-A4950ToShare -SourceFile $archive -DestinationFolder $DestFolder -TimeStamp $Shared.Stamp -CancelCheck $cancel
                     if ($t.Cancelled) {
                         Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='xfer'; Action='done'; Name=$name; Ok=$false }
                         break
                     }
+                    $destName = if ($t.Destination) { Split-Path -Leaf $t.Destination } else { $name }
+                    if ($t.Renamed) { Write-A4950WorkerLog $Shared "Name clash at destination - saved as: $destName" 'WARN' }
+                    if (-not $t.Success -and $t.Error) { Write-A4950WorkerLog $Shared "Transfer error for $name : $($t.Error)" 'ERROR' }
                     if ($t.Success) {
                         $whenUtc = [DateTime]::UtcNow.ToString('o')
                         $shaText = if ($srcSha) { "SHA256=$srcSha" } else { 'SHA256=(not calculated - quick transfer)' }
-                        Write-A4950WorkerLog $Shared "Transferred: $name  $shaText  ($whenUtc)" 'OK'
+                        Write-A4950WorkerLog $Shared "Transferred: $destName  $shaText  ($whenUtc)" 'OK'
                         if ($cfg.VerifyAfterTransfer) {
                             $d = ''; try { $d = (Get-FileHash -LiteralPath $t.Destination -Algorithm SHA256).Hash } catch {}
-                            if ($d -eq $srcSha -and $srcSha) { Write-A4950WorkerLog $Shared "Verified   : $name (SHA-256 match)" 'OK' }
-                            else { Write-A4950WorkerLog $Shared "VERIFY FAIL: $name (SHA-256 mismatch)" 'ERROR' }
+                            if ($d -eq $srcSha -and $srcSha) { Write-A4950WorkerLog $Shared "Verified   : $destName (SHA-256 match)" 'OK' }
+                            else { Write-A4950WorkerLog $Shared "VERIFY FAIL: $destName (SHA-256 mismatch)" 'ERROR' }
                         }
                         if ($cfg.DeleteLocalArchive) {
                             Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
                         }
-                        $ResultBag.Add([pscustomobject]@{ Name=$name; Sha256=$srcSha; SizeBytes=$size; TransferredUtc=$whenUtc; Transferred=$true })
+                        $ResultBag.Add([pscustomobject]@{ Name=$destName; Sha256=$srcSha; SizeBytes=$size; TransferredUtc=$whenUtc; Transferred=$true })
                         Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='xfer'; Action='done'; Name=$name; Ok=$true }
                     } else {
                         Write-A4950WorkerLog $Shared "TRANSFER FAIL: $name (exit $($t.ExitCode))" 'ERROR'
                         $ResultBag.Add([pscustomobject]@{ Name=$name; Sha256=$srcSha; SizeBytes=$size; TransferredUtc=''; Transferred=$false })
                         Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='xfer'; Action='done'; Name=$name; Ok=$false }
                     }
+                  }
+                  catch {
+                    # Fault handling: keep the transfer loop alive on a per-file error.
+                    Write-A4950WorkerLog $Shared "ERROR transferring '$archive': $($_.Exception.Message)" 'ERROR'
+                  }
                 } elseif ($ProducerDone.Value) {
                     break   # nothing left and producer finished
                 } else {
@@ -158,11 +169,20 @@ function Invoke-A4950TransferJob {
         try { $volMB = [int]$cfg.VolumeSizeMB } catch {}
         $totalItems = $items.Count
         $idx = 0
+        $usedNames = @{}   # de-dupe archive base names (two selections can share a leaf name)
         foreach ($item in $items) {
-            if ($Shared.Cancel) { Write-A4950WorkerLog $Shared 'Cancellation requested - stopping.' 'WARN'; break }
-            $idx++
+          if ($Shared.Cancel) { Write-A4950WorkerLog $Shared 'Cancellation requested - stopping.' 'WARN'; break }
+          $idx++
+          try {
+            if (-not (Test-Path -LiteralPath $item)) { Write-A4950WorkerLog $Shared "SKIP (missing): $item" 'WARN'; continue }
             $itemName = Split-Path -Leaf $item.TrimEnd('\', '/')
             if (-not $itemName) { $itemName = 'root' }
+            $itemName = New-A4950CaseFolderName -CaseNumber $itemName
+            # Ensure a unique base name for this job's staging/archives.
+            if ($usedNames.ContainsKey($itemName.ToLower())) {
+                $usedNames[$itemName.ToLower()]++
+                $itemName = "{0}_{1}" -f $itemName, $usedNames[$itemName.ToLower()]
+            } else { $usedNames[$itemName.ToLower()] = 1 }
             Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage = 'item'; Current = $idx; Total = $totalItems; Name = $itemName }
             Write-A4950WorkerLog $Shared "--- [$idx/$totalItems] Processing '$itemName' ---" 'STEP'
 
@@ -209,6 +229,11 @@ function Invoke-A4950TransferJob {
             } else {
                 Write-A4950WorkerLog $Shared "COMPRESS FAIL: $itemName (exit $($a.ExitCode))" 'ERROR'
             }
+          }
+          catch {
+            # Fault handling: one bad item must not abort the whole job.
+            Write-A4950WorkerLog $Shared "ERROR processing item '$item': $($_.Exception.Message)" 'ERROR'
+          }
         }
 
         # Signal producer completion and wait for the consumer to drain.
@@ -233,7 +258,7 @@ function Invoke-A4950TransferJob {
             try {
                 Write-A4950TransferLog -LogPath $logPath -Records $done -Reference $case -Failed:$isFailed | Out-Null
                 # Copy the log to the destination (no cancel check - always send it).
-                $lt = Copy-A4950ToShare -SourceFile $logPath -DestinationFolder $destFolder
+                $lt = Copy-A4950ToShare -SourceFile $logPath -DestinationFolder $destFolder -TimeStamp $Shared.Stamp
                 if ($lt.Success) { Write-A4950WorkerLog $Shared "Transfer log written and sent: $logName" ($(if ($isFailed) {'WARN'} else {'OK'})) }
             } catch { Write-A4950WorkerLog $Shared "Could not write/send transfer log: $($_.Exception.Message)" 'ERROR' }
         }

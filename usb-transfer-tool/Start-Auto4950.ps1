@@ -47,6 +47,7 @@ $script:Shared = [hashtable]::Synchronized(@{
 })
 $script:PrevStats    = $null
 $script:XferOk       = 0
+$script:Prog         = $null
 $script:UsbEvents    = [System.Collections.Queue]::Synchronized([System.Collections.Queue]::new())
 $script:WorkerPs     = $null
 $script:WorkerRs     = $null
@@ -343,6 +344,21 @@ $xaml.SelectNodes("//*[@*[local-name()='Name']]") | ForEach-Object {
 # ----------------------------------------------------------------------------
 # Logging helper (writes coloured lines to the RichTextBox)
 # ----------------------------------------------------------------------------
+function Add-RtbLine {
+    param($Rtb, [string]$Text, [string]$Colour)
+    if (-not $Rtb) { return }
+    $para = New-Object System.Windows.Documents.Paragraph
+    $para.Margin = '0'
+    $run = New-Object System.Windows.Documents.Run $Text
+    $run.Foreground = (New-Object System.Windows.Media.BrushConverter).ConvertFromString($Colour)
+    $para.Inlines.Add($run)
+    $Rtb.Document.Blocks.Add($para)
+    while ($Rtb.Document.Blocks.Count -gt 800) {
+        $Rtb.Document.Blocks.Remove($Rtb.Document.Blocks.FirstBlock)
+    }
+    $Rtb.ScrollToEnd()
+}
+
 function Add-LogLine {
     param([string]$Text, [string]$Level = 'INFO')
     $colour = switch ($Level) {
@@ -352,18 +368,10 @@ function Add-LogLine {
         'STEP'  { '#FF4FC3F7' }
         default { '#FFD4D4D4' }
     }
-    $ts = Get-Date -Format 'HH:mm:ss'
-    $para = New-Object System.Windows.Documents.Paragraph
-    $para.Margin = '0'
-    $run = New-Object System.Windows.Documents.Run ("[{0}] {1}" -f $ts, $Text)
-    $run.Foreground = (New-Object System.Windows.Media.BrushConverter).ConvertFromString($colour)
-    $para.Inlines.Add($run)
-    $ctrl.TxtLog.Document.Blocks.Add($para)
-    # Keep the buffer bounded so long jobs stay responsive.
-    while ($ctrl.TxtLog.Document.Blocks.Count -gt 800) {
-        $ctrl.TxtLog.Document.Blocks.Remove($ctrl.TxtLog.Document.Blocks.FirstBlock)
-    }
-    $ctrl.TxtLog.ScrollToEnd()
+    $line = "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $Text
+    Add-RtbLine $ctrl.TxtLog $line $colour
+    # Mirror into the transfer-progress popup when it is open.
+    if ($script:Prog -and $script:Prog.Log) { Add-RtbLine $script:Prog.Log $line $colour }
 }
 
 # ----------------------------------------------------------------------------
@@ -401,44 +409,89 @@ function Get-SelectedDriveRoot {
     return $null
 }
 
+$script:SuppressCascade = $false
+
+function Get-NodeCheckBox {
+    param($Tvi)
+    if ($Tvi -is [System.Windows.Controls.TreeViewItem] -and $Tvi.Header -is [System.Windows.Controls.CheckBox]) { return $Tvi.Header }
+    return $null
+}
+
+function Set-SubtreeChecked {
+    param($Tvi, [bool]$Value)
+    foreach ($child in $Tvi.Items) {
+        if ($child -is [System.Windows.Controls.TreeViewItem]) {
+            $cb = Get-NodeCheckBox $child
+            if ($cb) { $cb.IsChecked = $Value }
+            Set-SubtreeChecked $child $Value
+        }
+    }
+}
+
+function Clear-Ancestors {
+    param($Tvi)
+    $p = $Tvi.Parent
+    while ($p -is [System.Windows.Controls.TreeViewItem]) {
+        $cb = Get-NodeCheckBox $p
+        if ($cb -and $cb.IsChecked) { $cb.IsChecked = $false }
+        $p = $p.Parent
+    }
+}
+
+function Invoke-NodeCascade {
+    param($Tvi, [bool]$Checked)
+    if ($script:SuppressCascade) { return }
+    $script:SuppressCascade = $true
+    try {
+        Set-SubtreeChecked $Tvi $Checked           # cascade down to loaded children
+        if (-not $Checked) { Clear-Ancestors $Tvi } # a parent is no longer "fully selected"
+    } finally { $script:SuppressCascade = $false }
+    Update-SelectionCount
+}
+
 function New-TreeCheckItem {
-    param([string]$FullPath, [string]$Display, [bool]$IsFolder, [bool]$Checked)
+    param([string]$FullPath, [string]$Name, [bool]$IsFolder, [bool]$Checked)
     $cb = New-Object System.Windows.Controls.CheckBox
-    $cb.Content = $Display
+    $cb.Content = $(if ($IsFolder) { "[Folder] $Name" } else { "[File]   $Name" })
     $cb.IsChecked = $Checked
     $cb.Foreground = $window.FindResource('Text')
-    $cb.Tag = @{ Path = $FullPath; IsFolder = $IsFolder }
-    $cb.Add_Checked({ Update-SelectionCount })
-    $cb.Add_Unchecked({ Update-SelectionCount })
     $tvi = New-Object System.Windows.Controls.TreeViewItem
     $tvi.Header = $cb
-    $tvi.Tag = $FullPath
+    $tvi.Tag = @{ Path = $FullPath; IsFolder = $IsFolder; Loaded = $false }
+    # Store a back-reference so event handlers can find the node from the sender.
+    $cb.Tag = @{ Path = $FullPath; IsFolder = $IsFolder; Tvi = $tvi }
+    $cb.Add_Checked({   param($s, $e) Invoke-NodeCascade $s.Tag.Tvi $true })
+    $cb.Add_Unchecked({ param($s, $e) Invoke-NodeCascade $s.Tag.Tvi $false })
     if ($IsFolder) {
-        # Lazy child placeholder so folders can be expanded for review.
-        [void]$tvi.Items.Add('...')
-        $tvi.Add_Expanded({
-            param($s, $e)
-            if ($s.Items.Count -eq 1 -and $s.Items[0] -eq '...') {
-                $s.Items.Clear()
-                try {
-                    Get-ChildItem -LiteralPath $s.Tag -Force -ErrorAction SilentlyContinue |
-                        Sort-Object { -not $_.PSIsContainer }, Name |
-                        Select-Object -First 500 | ForEach-Object {
-                            $child = New-Object System.Windows.Controls.TreeViewItem
-                            $child.Header = ($(if ($_.PSIsContainer) { '[+] ' } else { '     ' }) + $_.Name)
-                            $child.Foreground = $window.FindResource('Muted')
-                            [void]$s.Items.Add($child)
-                        }
-                    if ($s.Items.Count -eq 0) {
-                        $empty = New-Object System.Windows.Controls.TreeViewItem
-                        $empty.Header = '(empty)'; $empty.Foreground = $window.FindResource('Muted')
-                        [void]$s.Items.Add($empty)
-                    }
-                } catch {}
-            }
-        })
+        [void]$tvi.Items.Add('...')   # placeholder -> lazy load on expand
+        $tvi.Add_Expanded({ param($s, $e) Expand-TreeNode $s })
     }
     return $tvi
+}
+
+function Expand-TreeNode {
+    param($Tvi)
+    if ($Tvi.Tag.Loaded) { return }
+    $Tvi.Tag.Loaded = $true
+    $Tvi.Items.Clear()
+    $parentCb = Get-NodeCheckBox $Tvi
+    $parentChecked = [bool]($parentCb -and $parentCb.IsChecked)
+    $excl = @($config.ExcludePatterns)
+    if ($ctrl.OptExcl) { $excl = @($ctrl.OptExcl.Text.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+    $script:SuppressCascade = $true   # building nodes must not trigger cascade
+    try {
+        $kids = Get-ChildItem -LiteralPath $Tvi.Tag.Path -Force -ErrorAction SilentlyContinue |
+            Where-Object { $excl -notcontains $_.Name } |
+            Sort-Object { -not $_.PSIsContainer }, Name | Select-Object -First 1000
+        foreach ($k in $kids) {
+            [void]$Tvi.Items.Add((New-TreeCheckItem -FullPath $k.FullName -Name $k.Name -IsFolder $k.PSIsContainer -Checked $parentChecked))
+        }
+        if ($Tvi.Items.Count -eq 0) {
+            $empty = New-Object System.Windows.Controls.TreeViewItem
+            $empty.Header = '(empty)'; $empty.Foreground = $window.FindResource('Muted')
+            [void]$Tvi.Items.Add($empty)
+        }
+    } catch {} finally { $script:SuppressCascade = $false }
 }
 
 function Update-TreeForDrive {
@@ -451,27 +504,39 @@ function Update-TreeForDrive {
     $excl    = @($config.ExcludePatterns)
     if ($ctrl.OptSelDefault) { $checked = [bool]$ctrl.OptSelDefault.IsChecked }
     if ($ctrl.OptExcl)       { $excl = @($ctrl.OptExcl.Text.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+    $script:SuppressCascade = $true
     try {
         $entries = Get-ChildItem -LiteralPath $rootPath -Force -ErrorAction SilentlyContinue |
             Where-Object { $excl -notcontains $_.Name } |
             Sort-Object { -not $_.PSIsContainer }, Name
         foreach ($e in $entries) {
-            $display = $(if ($e.PSIsContainer) { "[Folder] $($e.Name)" } else { "[File]   $($e.Name)" })
-            [void]$ctrl.TreeItems.Items.Add((New-TreeCheckItem -FullPath $e.FullName -Display $display -IsFolder $e.PSIsContainer -Checked $checked))
+            [void]$ctrl.TreeItems.Items.Add((New-TreeCheckItem -FullPath $e.FullName -Name $e.Name -IsFolder $e.PSIsContainer -Checked $checked))
         }
     } catch {
         Add-LogLine "Could not read drive $root : $($_.Exception.Message)" 'ERROR'
-    }
+    } finally { $script:SuppressCascade = $false }
     Update-SelectionCount
+}
+
+function Add-CheckedFromNode {
+    param($Tvi, $Result)
+    $cb = Get-NodeCheckBox $Tvi
+    if (-not $cb) { return }
+    if ($cb.IsChecked) {
+        # Highest checked node covers everything below it -> include and stop.
+        $Result.Add($cb.Tag.Path)
+        return
+    }
+    # Unchecked: descend into any loaded children for individually-checked items.
+    foreach ($child in $Tvi.Items) {
+        if ($child -is [System.Windows.Controls.TreeViewItem]) { Add-CheckedFromNode $child $Result }
+    }
 }
 
 function Get-CheckedItems {
     $result = New-Object System.Collections.Generic.List[string]
     foreach ($tvi in $ctrl.TreeItems.Items) {
-        $cb = $tvi.Header
-        if ($cb -is [System.Windows.Controls.CheckBox] -and $cb.IsChecked) {
-            $result.Add($cb.Tag.Path)
-        }
+        if ($tvi -is [System.Windows.Controls.TreeViewItem]) { Add-CheckedFromNode $tvi $result }
     }
     return $result
 }
@@ -483,9 +548,17 @@ function Update-SelectionCount {
 
 function Set-AllChecks {
     param([bool]$Value)
-    foreach ($tvi in $ctrl.TreeItems.Items) {
-        if ($tvi.Header -is [System.Windows.Controls.CheckBox]) { $tvi.Header.IsChecked = $Value }
-    }
+    $script:SuppressCascade = $true
+    try {
+        foreach ($tvi in $ctrl.TreeItems.Items) {
+            if ($tvi -is [System.Windows.Controls.TreeViewItem]) {
+                $cb = Get-NodeCheckBox $tvi
+                if ($cb) { $cb.IsChecked = $Value }
+                Set-SubtreeChecked $tvi $Value   # recurse into all loaded sub-folders/files
+            }
+        }
+    } finally { $script:SuppressCascade = $false }
+    Update-SelectionCount
 }
 
 
@@ -661,6 +734,83 @@ function Update-Footer {
 }
 
 # ----------------------------------------------------------------------------
+# Transfer-in-progress popup (modeless, mirrors the live events)
+# ----------------------------------------------------------------------------
+function Show-ProgressWindow {
+    param([string]$Name)
+    Close-ProgressWindow
+    [xml]$px = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Transfer in progress" Height="560" Width="820" WindowStartupLocation="CenterOwner"
+        Background="#FF1E1E24" FontFamily="Segoe UI">
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <StackPanel Grid.Row="0">
+      <TextBlock x:Name="PTitle" Text="Transfer in progress" FontSize="18" FontWeight="Bold" Foreground="#FF4FC3F7"/>
+      <TextBlock x:Name="PStatus" Text="Starting..." Foreground="#FF9AA0A6" Margin="0,2,0,8"/>
+    </StackPanel>
+    <StackPanel Grid.Row="1">
+      <TextBlock x:Name="PStage" Text="Preparing..." Foreground="#FFECECEC"/>
+      <ProgressBar x:Name="PBarJob" Height="16" Minimum="0" Maximum="100" Foreground="#FF66BB6A" Background="#FF20202A" Margin="0,4,0,8"/>
+    </StackPanel>
+    <StackPanel Grid.Row="2">
+      <TextBlock x:Name="PXfer" Text="Transfer: idle" Foreground="#FFECECEC"/>
+      <ProgressBar x:Name="PBarXfer" Height="12" Foreground="#FF4FC3F7" Background="#FF20202A" Margin="0,4,0,2"/>
+      <TextBlock x:Name="PCount" Text="0 file(s) transferred" Foreground="#FF9AA0A6" Margin="0,0,0,8"/>
+    </StackPanel>
+    <Border Grid.Row="3" Background="#FF14141A" CornerRadius="6">
+      <RichTextBox x:Name="PLog" Background="Transparent" Foreground="#FFD4D4D4" BorderThickness="0"
+                   FontFamily="Consolas" FontSize="12" IsReadOnly="True"
+                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+    </Border>
+    <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+      <Button x:Name="PCancel" Content="Cancel Transfer" Padding="14,7" Margin="4" Background="#FF8E2A2A" Foreground="#FFECECEC"/>
+      <Button x:Name="PClose"  Content="Close" Padding="14,7" Margin="4" Background="#FF3A3A46" Foreground="#FFECECEC"/>
+    </StackPanel>
+  </Grid>
+</Window>
+"@
+    $pw = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $px))
+    $pw.Owner = $window
+    $g = { param($n) $pw.FindName($n) }
+    $script:Prog = @{
+        Window = $pw
+        Log    = (& $g 'PLog')
+        Title  = (& $g 'PTitle')
+        Status = (& $g 'PStatus')
+        Stage  = (& $g 'PStage')
+        BarJob = (& $g 'PBarJob')
+        Xfer   = (& $g 'PXfer')
+        BarXfer= (& $g 'PBarXfer')
+        Count  = (& $g 'PCount')
+        Cancel = (& $g 'PCancel')
+        Close  = (& $g 'PClose')
+    }
+    (& $g 'PTitle').Text  = "Transfer in progress - $Name"
+    (& $g 'PStatus').Text = "Capturing $Name..."
+    (& $g 'PCount').Text  = '0 file(s) transferred'
+    (& $g 'PCancel').Add_Click({ Stop-Capture })
+    (& $g 'PClose').Add_Click({ Close-ProgressWindow })
+    $pw.Add_Closing({ $script:Prog = $null })
+    $pw.Show()
+}
+
+function Close-ProgressWindow {
+    if ($script:Prog -and $script:Prog.Window) {
+        $w = $script:Prog.Window
+        $script:Prog = $null
+        try { $w.Close() } catch {}
+    }
+}
+
+# ----------------------------------------------------------------------------
 # Start / cancel the capture job
 # ----------------------------------------------------------------------------
 function Start-Capture {
@@ -692,18 +842,19 @@ function Start-Capture {
     $caseSafe = New-A4950CaseFolderName $name
 
     if (-not $NoConfirm) {
-        # List the top-level folders/files, the destination folder and the zip names.
+        # List each selected item's FULL source path, the destination folder and the zip names.
         $fmt = $config.ArchiveFormat
         $splitSuffix = if ([int]$config.VolumeSizeMB -gt 0) { ".001, .002, ..." } else { '' }
         $lines = foreach ($it in $items) {
             $leaf = Split-Path -Leaf ($it.TrimEnd('\','/'))
             if (-not $leaf) { $leaf = 'root' }
-            "   - $leaf   ->   ${caseSafe}__$leaf.$fmt$splitSuffix"
+            "   SOURCE: $it`n      -> ${caseSafe}__$leaf.$fmt$splitSuffix"
         }
-        $maxShow = 20
+        $maxShow = 15
         $shown = @($lines | Select-Object -First $maxShow)
         if ($items.Count -gt $maxShow) { $shown += "   ... and $($items.Count - $maxShow) more" }
         $destPath = Join-Path $config.NetworkShare $caseSafe
+        $srcRootFull = "$(Get-SelectedDriveRoot)\"
         $integrity = if ($config.EmbedManifest) {
             "Originals will be hashed ($($config.HashAlgorithms -join ' + '))" +
             $(if ($config.VerifyAfterTransfer) { ' and verified at the destination' } else { ' (no destination verify)' }) + '.'
@@ -711,12 +862,12 @@ function Start-Capture {
             "WARNING: Quick Transfer - NO hashing and NO verification. File integrity will not be recorded."
         }
         $msg = @"
-Capture $($items.Count) top-level item(s) as '$name' ($($tn.Kind))?
+Capture $($items.Count) selected item(s) as '$name' ($($tn.Kind))?
 
-Source drive : $(Get-SelectedDriveRoot)
-Destination  : $destPath
+Source (full path) : $srcRootFull
+Destination folder : $destPath
 
-Selected folders/files  ->  archive name:
+Selected items (full source path)  ->  archive name:
 $($shown -join "`n")
 
 $integrity
@@ -758,6 +909,7 @@ $integrity
     $ctrl.BtnStart.IsEnabled  = $false
     $ctrl.BtnCancel.IsEnabled = $true
     $ctrl.StatusLine.Text = "Capturing $name ($($tn.Kind)) ..."
+    Show-ProgressWindow -Name $name          # popup with live events
     Add-LogLine "Capture started for $name ($($tn.Kind))." 'STEP'
 }
 
@@ -808,46 +960,64 @@ $statsTimer.Add_Tick({
 $pumpTimer = New-Object System.Windows.Threading.DispatcherTimer
 $pumpTimer.Interval = [TimeSpan]::FromMilliseconds(250)
 $pumpTimer.Add_Tick({
+  try {
     while ($script:Shared.Messages.Count -gt 0) {
         $m = $script:Shared.Messages.Dequeue()
+        $P = $script:Prog
         switch ($m.Type) {
             'log' { Add-LogLine $m.Text $m.Level }
             'progress' {
                 switch ($m.Stage) {
-                    'item'     { $ctrl.LblStage.Text = "Item $($m.Current)/$($m.Total): $($m.Name)"; $ctrl.BarJob.IsIndeterminate = $false; $ctrl.BarJob.Value = 0; $ctrl.LblJob.Text = '' }
-                    'hash'     { $ctrl.LblStage.Text = "Hashing: $($m.Name)"; $ctrl.BarJob.IsIndeterminate = $false; if ($m.Total) { $ctrl.BarJob.Value = 100 * $m.Current / $m.Total } }
+                    'item' {
+                        $ctrl.LblStage.Text = "Item $($m.Current)/$($m.Total): $($m.Name)"; $ctrl.BarJob.IsIndeterminate = $false; $ctrl.BarJob.Value = 0; $ctrl.LblJob.Text = ''
+                        if ($P) { $P.Stage.Text = "Item $($m.Current)/$($m.Total): $($m.Name)"; $P.BarJob.IsIndeterminate = $false; $P.BarJob.Value = 0 }
+                    }
+                    'hash' {
+                        $ctrl.LblStage.Text = "Hashing: $($m.Name)"; $ctrl.BarJob.IsIndeterminate = $false; if ($m.Total) { $ctrl.BarJob.Value = 100 * $m.Current / $m.Total }
+                        if ($P) { $P.Stage.Text = "Hashing: $($m.Name)"; $P.BarJob.IsIndeterminate = $false; if ($m.Total) { $P.BarJob.Value = 100 * $m.Current / $m.Total } }
+                    }
                     'compress' {
                         $ctrl.LblStage.Text = "Compressing: $($m.Name)"
                         if ([int]$m.Percent -lt 0) { $ctrl.BarJob.IsIndeterminate = $true; $ctrl.LblJob.Text = 'working...' }
                         else { $ctrl.BarJob.IsIndeterminate = $false; $ctrl.BarJob.Value = $m.Percent; $ctrl.LblJob.Text = "$($m.Percent)%" }
+                        if ($P) { $P.Stage.Text = "Compressing: $($m.Name)"; $P.BarJob.IsIndeterminate = ([int]$m.Percent -lt 0); if ([int]$m.Percent -ge 0) { $P.BarJob.Value = $m.Percent } }
                     }
                     'xfer' {
                         if ($m.Action -eq 'start') {
-                            $ctrl.LblXfer.Text = "Transferring: $($m.Name)"
-                            $ctrl.BarXfer.IsIndeterminate = $true
+                            $ctrl.LblXfer.Text = "Transferring: $($m.Name)"; $ctrl.BarXfer.IsIndeterminate = $true
+                            if ($P) { $P.Xfer.Text = "Transferring: $($m.Name)"; $P.BarXfer.IsIndeterminate = $true }
                         } else {
                             $ctrl.BarXfer.IsIndeterminate = $false; $ctrl.BarXfer.Value = 0
+                            if ($P) { $P.BarXfer.IsIndeterminate = $false; $P.BarXfer.Value = 0 }
                             if ($m.Ok) {
                                 $script:XferOk = [int]$script:XferOk + 1
-                                $ctrl.LblXfer.Text = "Transferred: $($m.Name)"
-                                $ctrl.LblXferCount.Text = "$($script:XferOk) file(s) transferred"
+                                $ctrl.LblXfer.Text = "Transferred: $($m.Name)"; $ctrl.LblXferCount.Text = "$($script:XferOk) file(s) transferred"
+                                if ($P) { $P.Xfer.Text = "Transferred: $($m.Name)"; $P.Count.Text = "$($script:XferOk) file(s) transferred" }
                             } else {
                                 $ctrl.LblXfer.Text = "Transfer stopped: $($m.Name)"
+                                if ($P) { $P.Xfer.Text = "Transfer stopped: $($m.Name)" }
                             }
                         }
                     }
                 }
             }
             'done' {
-                if ($m.Error) { Add-LogLine "Job ended with error: $($m.Error)" 'ERROR' }
-                elseif ($m.Cancelled) { Add-LogLine "Cancelled: $($m.Ok) file(s) transferred before stopping; temp cleaned up." 'WARN'; $ctrl.LblXfer.Text = "Cancelled ($($m.Ok) transferred)" }
-                else { Add-LogLine "Job finished: $($m.Ok) transferred, $($m.Fail) failed. -> $($m.Destination)" ($(if ($m.Fail) {'WARN'} else {'OK'})); $ctrl.LblXfer.Text = "Complete ($($m.Ok) transferred)" }
+                if ($m.Error) { Add-LogLine "Job ended with error: $($m.Error)" 'ERROR'; $endText = "Error: $($m.Error)" }
+                elseif ($m.Cancelled) { Add-LogLine "Cancelled: $($m.Ok) file(s) transferred before stopping; temp cleaned up." 'WARN'; $ctrl.LblXfer.Text = "Cancelled ($($m.Ok) transferred)"; $endText = "Cancelled - $($m.Ok) file(s) transferred" }
+                else { Add-LogLine "Job finished: $($m.Ok) transferred, $($m.Fail) failed. -> $($m.Destination)" ($(if ($m.Fail) {'WARN'} else {'OK'})); $ctrl.LblXfer.Text = "Complete ($($m.Ok) transferred)"; $endText = "Complete - $($m.Ok) transferred, $($m.Fail) failed" }
                 $ctrl.LblStage.Text = 'No job running'; $ctrl.BarJob.IsIndeterminate = $false; $ctrl.BarJob.Value = 0; $ctrl.LblJob.Text = ''
                 $ctrl.BarXfer.IsIndeterminate = $false; $ctrl.BarXfer.Value = 0
+                if ($P) {
+                    $P.Status.Text = $endText; $P.Title.Text = 'Transfer finished'
+                    $P.Stage.Text = 'Done'; $P.BarJob.IsIndeterminate = $false; $P.BarJob.Value = 0
+                    $P.BarXfer.IsIndeterminate = $false; $P.BarXfer.Value = 0
+                    $P.Cancel.IsEnabled = $false
+                }
                 Complete-Capture
             }
         }
     }
+  } catch { Add-LogLine "UI update error: $($_.Exception.Message)" 'ERROR' }
 })
 
 $usbTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -1028,8 +1198,9 @@ $window.Add_Loaded({
 })
 
 $window.Add_Closing({
-    $statsTimer.Stop(); $pumpTimer.Stop(); $usbTimer.Stop()
     if ($script:Shared.Running) { $script:Shared.Cancel = $true }
+    Close-ProgressWindow
+    $statsTimer.Stop(); $pumpTimer.Stop(); $usbTimer.Stop()
     Get-EventSubscriber -SourceIdentifier 'Auto4950UsbArrival' -ErrorAction SilentlyContinue | Unregister-Event -ErrorAction SilentlyContinue
 })
 

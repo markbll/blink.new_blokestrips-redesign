@@ -492,38 +492,77 @@ function Copy-A4950ToShare {
     param(
         [Parameter(Mandatory)][string]$SourceFile,
         [Parameter(Mandatory)][string]$DestinationFolder,
+        [string]$TimeStamp,             # used to de-dupe a name that already exists at the destination
         [scriptblock]$CancelCheck,
         [scriptblock]$OnOutput
     )
 
-    if (-not (Test-Path -LiteralPath $DestinationFolder)) {
-        New-Item -ItemType Directory -Path $DestinationFolder -Force | Out-Null
-    }
+    $result = [pscustomobject]@{ Success = $false; Cancelled = $false; ExitCode = -1; Destination = $null; Renamed = $false; Error = '' }
+    try {
+        if (-not (Test-Path -LiteralPath $DestinationFolder)) {
+            New-Item -ItemType Directory -Path $DestinationFolder -Force | Out-Null
+        }
 
-    $srcDir  = Split-Path -Parent $SourceFile
-    $srcName = Split-Path -Leaf   $SourceFile
-    $result  = [pscustomobject]@{ Success = $false; Cancelled = $false; ExitCode = -1; Destination = (Join-Path $DestinationFolder $srcName) }
+        $srcDir   = Split-Path -Parent $SourceFile
+        $srcName  = Split-Path -Leaf   $SourceFile
+        $destName = $srcName
 
-    $robocopy = Get-Command robocopy.exe -ErrorAction SilentlyContinue
-    if ($robocopy) {
-        # /J unbuffered I/O = fast for large files, /R:2 /W:3 retry, quiet output.
-        $rcArgs = @($srcDir, $DestinationFolder, $srcName, '/J', '/R:2', '/W:3', '/NP', '/NDL', '/NJH', '/NJS')
-        $run = Invoke-A4950Process -FilePath $robocopy.Source -Arguments $rcArgs -CancelCheck $CancelCheck
-        $result.ExitCode  = $run.ExitCode
-        $result.Cancelled = $run.Cancelled
-        if ($OnOutput -and $run.Output) { & $OnOutput $run.Output }
-        # Robocopy success codes are 0-7.
-        $result.Success = (-not $run.Cancelled) -and ($run.ExitCode -lt 8) -and (Test-Path -LiteralPath $result.Destination)
-    } else {
-        try { Copy-Item -LiteralPath $SourceFile -Destination $result.Destination -Force } catch {}
-        $result.ExitCode = 0
-        $result.Success = Test-Path -LiteralPath $result.Destination
-    }
-    if ($result.Cancelled) {
-        # Remove a partially-copied destination file.
-        Remove-Item -LiteralPath $result.Destination -Force -ErrorAction SilentlyContinue
+        # Fault handling: never overwrite an existing destination file. If a file
+        # of the same name is already there, append the date/time to make it unique.
+        if (Test-Path -LiteralPath (Join-Path $DestinationFolder $srcName)) {
+            if (-not $TimeStamp) { $TimeStamp = Get-Date -Format 'yyyyMMdd_HHmmss' }
+            $destName = Get-A4950UniqueName -FileName $srcName -Folder $DestinationFolder -TimeStamp $TimeStamp
+            $result.Renamed = $true
+        }
+        $result.Destination = Join-Path $DestinationFolder $destName
+
+        $robocopy = Get-Command robocopy.exe -ErrorAction SilentlyContinue
+        if ($robocopy -and $destName -eq $srcName) {
+            # robocopy keeps the same file name; fast path.
+            $rcArgs = @($srcDir, $DestinationFolder, $srcName, '/J', '/R:2', '/W:3', '/NP', '/NDL', '/NJH', '/NJS')
+            $run = Invoke-A4950Process -FilePath $robocopy.Source -Arguments $rcArgs -CancelCheck $CancelCheck
+            $result.ExitCode  = $run.ExitCode
+            $result.Cancelled = $run.Cancelled
+            if ($OnOutput -and $run.Output) { & $OnOutput $run.Output }
+            $result.Success = (-not $run.Cancelled) -and ($run.ExitCode -lt 8) -and (Test-Path -LiteralPath $result.Destination)
+        } else {
+            # Renamed target (or no robocopy): copy to the explicit destination name.
+            if ($CancelCheck -and (& $CancelCheck)) { $result.Cancelled = $true; return $result }
+            Copy-Item -LiteralPath $SourceFile -Destination $result.Destination -Force
+            $result.ExitCode = 0
+            $result.Success = Test-Path -LiteralPath $result.Destination
+        }
+        if ($result.Cancelled) {
+            Remove-Item -LiteralPath $result.Destination -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        $result.Error = $_.Exception.Message
+        $result.Success = $false
     }
     return $result
+}
+
+function Get-A4950UniqueName {
+    <#
+    .SYNOPSIS Build a destination file name that does not already exist, by
+              inserting a date/time stamp before the first extension.
+    .EXAMPLE  case__Photos.zip.001  ->  case__Photos_20260727_143000.zip.001
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FileName,
+        [Parameter(Mandatory)][string]$Folder,
+        [string]$TimeStamp = (Get-Date -Format 'yyyyMMdd_HHmmss')
+    )
+    $dot = $FileName.IndexOf('.')
+    if ($dot -lt 0) { $base = $FileName; $ext = '' } else { $base = $FileName.Substring(0, $dot); $ext = $FileName.Substring($dot) }
+    $candidate = "${base}_${TimeStamp}${ext}"
+    $i = 1
+    while (Test-Path -LiteralPath (Join-Path $Folder $candidate)) {
+        $candidate = "${base}_${TimeStamp}_$i${ext}"   # extremely unlikely, but stay safe
+        $i++
+    }
+    return $candidate
 }
 
 function Write-A4950TransferLog {

@@ -18,7 +18,11 @@ starts uploading while the next is still compressing.
 | Detect new USB drives | WMI `Win32_VolumeChangeEvent` watcher; the drive is scanned and listed on insert |
 | Prompt before acting | Yes/No dialog on insert (`AutoPromptOnInsert`), plus a final confirm |
 | Auto-transfer | Tick-box: start automatically on insert, needing only a CMS case, OP name **or** pass number |
-| Choose folders/files/drives | Checkbox tree of the drive; **all selected by default**; Select All / Deselect All; drive Refresh |
+| Choose folders/files/drives | Checkbox tree with **selectable sub-folders/files**; Select All / **Deselect All clears every level**; drive Refresh |
+| Confirmation detail | Confirm dialog shows the **full source path** of each item, the destination folder and the zip names |
+| Transfer popup | A "Transfer in progress" window opens on start, mirroring the live events + progress |
+| Duplicate-safe destination | Never overwrites: a clashing destination file name gets a date/time appended |
+| Fault handling | Per-item and per-file errors are logged and skipped without aborting the whole job |
 | CMS / OP / Pass in the name | CMS case (`CMS-A…`), **UPPERCASE** OP name, and operator **pass number** are combined into the folder/archive name |
 | Quick Transfer | One button applies the fastest settings (store, single file, **no hashing, no manifest, no verify**) — warns first that integrity is not recorded |
 | All options on the main screen | Every setting (incl. **sizing** dropdown) on the on-screen Options panel; **Browse…** pickers for share/staging/7-Zip |
