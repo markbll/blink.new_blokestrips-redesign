@@ -123,6 +123,7 @@ $script:WorkerHandle = $null
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <Button x:Name="BtnQuick"    Content="Quick Transfer" Background="#FF7B5BD1"/>
           <Button x:Name="BtnRefresh"  Content="Rescan Drives"/>
+          <Button x:Name="BtnToggleOptions" Content="Hide Options"/>
           <Button x:Name="BtnHelp"     Content="Help"/>
         </StackPanel>
       </Grid>
@@ -133,8 +134,8 @@ $script:WorkerHandle = $null
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="250"/>
         <ColumnDefinition Width="330"/>
-        <ColumnDefinition Width="320"/>
-        <ColumnDefinition Width="*"/>
+        <ColumnDefinition x:Name="ColOptions" Width="300"/>
+        <ColumnDefinition Width="1.5*"/>
       </Grid.ColumnDefinitions>
 
       <!-- Live system stats -->
@@ -235,7 +236,7 @@ $script:WorkerHandle = $null
       </Border>
 
       <!-- Options (all settings, on the main screen) -->
-      <Border Grid.Column="2" Style="{StaticResource Card}">
+      <Border x:Name="PanelOptions" Grid.Column="2" Style="{StaticResource Card}">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -312,10 +313,10 @@ $script:WorkerHandle = $null
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
           </Grid.RowDefinitions>
-          <TextBlock Grid.Row="0" Text="REAL-TIME ACTIVITY LOG" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,0,6"/>
+          <TextBlock Grid.Row="0" Text="REAL-TIME ACTIVITY LOG" FontSize="15" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,0,8"/>
           <Border Grid.Row="1" Background="#FF14141A" CornerRadius="6">
-            <RichTextBox x:Name="TxtLog" Background="Transparent" Foreground="#FFD4D4D4" BorderThickness="0"
-                         FontFamily="Consolas" FontSize="12" IsReadOnly="True"
+            <RichTextBox x:Name="TxtLog" Background="Transparent" Foreground="#FFD4D4D4" BorderThickness="0" Padding="8"
+                         FontFamily="Consolas" FontSize="13" IsReadOnly="True"
                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
           </Border>
         </Grid>
@@ -837,6 +838,23 @@ function Close-ProgressWindow {
 }
 
 # ----------------------------------------------------------------------------
+# Options panel show/hide (frees the width for a bigger activity log)
+# ----------------------------------------------------------------------------
+$script:OptionsVisible = $true
+function Toggle-OptionsPanel {
+    $script:OptionsVisible = -not $script:OptionsVisible
+    if ($script:OptionsVisible) {
+        $ctrl.ColOptions.Width = [System.Windows.GridLength]::new(300)
+        $ctrl.PanelOptions.Visibility = 'Visible'
+        $ctrl.BtnToggleOptions.Content = 'Hide Options'
+    } else {
+        $ctrl.ColOptions.Width = [System.Windows.GridLength]::new(0)
+        $ctrl.PanelOptions.Visibility = 'Collapsed'
+        $ctrl.BtnToggleOptions.Content = 'Show Options'
+    }
+}
+
+# ----------------------------------------------------------------------------
 # Start / cancel the capture job
 # ----------------------------------------------------------------------------
 # ----------------------------------------------------------------------------
@@ -1318,6 +1336,11 @@ NAMING
 SYSTEM MONITOR
   Live CPU, memory, network throughput and temp-folder free space.
 
+HIDE OPTIONS
+  Click "Hide Options" in the header to collapse the Options panel and give
+  the Activity Log more room; click "Show Options" to bring it back. Your
+  settings are unaffected either way - it only changes what's on screen.
+
 See README.md and docs\USER_GUIDE.md for full documentation.
 "@
     [System.Windows.MessageBox]::Show($msg, 'Help', 'OK', 'Information') | Out-Null
@@ -1327,6 +1350,7 @@ See README.md and docs\USER_GUIDE.md for full documentation.
 # Wire up events
 # ----------------------------------------------------------------------------
 $ctrl.BtnRefresh.Add_Click({ Update-DriveList; Update-TreeForDrive; Add-LogLine 'Drives rescanned.' 'INFO' })
+$ctrl.BtnToggleOptions.Add_Click({ Toggle-OptionsPanel })
 $ctrl.BtnDriveRefresh.Add_Click({ Update-DriveList; Update-TreeForDrive; Add-LogLine 'Drives refreshed.' 'INFO' })
 $ctrl.BtnHelp.Add_Click({ Show-Help })
 $ctrl.BtnQuick.Add_Click({ Set-QuickTransfer })

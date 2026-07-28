@@ -40,19 +40,22 @@ detects this and will tell you.
 ## 2. The main window
 
 ```
-┌ Header ─────────────────────────────────────────────────────────────────────┐
-│ Auto 49/50 + status                     [Rescan Drives] [Help]               │
-├ System Monitor ─┬ Details + Selection ─┬ Options ───────────┬ Activity Log ──┤
-│ CPU             │ CMS Case Number      │ Destination         │ [09:31:02] ... │
-│ Memory          │ OP Name (UPPERCASE)  │ Format / Split size │ colour-coded   │
-│ Network Mbps    │ ☑ Auto-transfer      │ Level / Hashing     │ events         │
-│ Temp free space │ Drive ▼ [Sel][Desel] │ ...all options...   │                │
-│ Job progress    │ ☑ Photos  ☑ report   │ [ Save Options ]    │                │
-│ Job progress    │ ...                      │                         │
-├─────────────────┴──────────────────────────┴─────────────────────────┤
-│ Destination: \\SERVER\...        [Start Capture]  [Cancel]           │
-└──────────────────────────────────────────────────────────────────────┘
+┌ Header ───────────────────────────────────────────────────────────────────────────┐
+│ Auto 49/50 + status      [Quick Transfer] [Rescan Drives] [Hide Options] [Help]     │
+├ System Monitor ─┬ Details + Selection ─┬ Options ───────────┬ Activity Log ────────┤
+│ CPU             │ CMS Case Number      │ Destination         │ [09:31:02] ...        │
+│ Memory          │ OP Name (UPPERCASE)  │ Format / Split size │ colour-coded          │
+│ Network Mbps    │ ☑ Auto-transfer      │ Level / Hashing     │ events                │
+│ Temp free space │ Drive ▼ [Sel][Desel] │ ...all options...   │                       │
+│ Job progress    │ ☑ Photos  ☑ report   │ [ Save Options ]    │                       │
+├─────────────────┴──────────────────────┴─────────────────────┴───────────────────────┤
+│ Destination: C:\Destination...        [Start Capture]  [Cancel]                       │
+└─────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+Click **Hide Options** to collapse the Options column and give the Activity
+Log more room (click **Show Options** to bring it back — nothing you've set is
+lost either way).
 
 ### System Monitor (Task-Manager style)
 - **CPU** — average processor load.
