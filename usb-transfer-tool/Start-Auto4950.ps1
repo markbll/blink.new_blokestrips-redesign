@@ -24,7 +24,7 @@ param()
 # Bootstrapping
 # ----------------------------------------------------------------------------
 $ErrorActionPreference = 'Stop'
-$script:AppVersion = '1.0.0'
+$script:AppVersion = '2.0'
 $scriptRoot   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $coreModule   = Join-Path $scriptRoot 'Modules\Auto4950.Core.psm1'
 $workerModule = Join-Path $scriptRoot 'Modules\Auto4950.Worker.psm1'
