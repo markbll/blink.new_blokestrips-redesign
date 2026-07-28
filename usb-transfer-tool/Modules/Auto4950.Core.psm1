@@ -36,7 +36,7 @@ function Get-DefaultConfig {
         # --- Compression -------------------------------------------------------
         CompressionLevel    = 5                        # 0 (store) .. 9 (ultra)
         ArchiveFormat       = 'zip'                     # zip | 7z
-        SplitPerTopLevel    = $true                    # One archive per top-level item (enables pipelining)
+        SplitPerTopLevel    = $true                    # $true (default) = one archive per top-level item, transferred as each finishes (fastest pipelining). $false = combine everything selected into ONE archive.
         VolumeSizeMB        = 2048                      # Split archives into volumes of this size (MB). 0 = no split
         Password            = ''                       # Optional AES-256 archive password (blank = none)
         # --- Hashing -----------------------------------------------------------
@@ -327,7 +327,7 @@ function New-A4950Archive {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$SevenZipPath,
-        [Parameter(Mandatory)][string]$SourcePath,
+        [Parameter(Mandatory)][string[]]$SourcePath,   # one path, or several to combine into one archive
         [Parameter(Mandatory)][string]$ArchivePath,
         [ValidateRange(0, 9)][int]$Level = 5,
         [ValidateSet('7z', 'zip')][string]$Format = 'zip',
@@ -350,8 +350,11 @@ function New-A4950Archive {
         Remove-Item -Force -ErrorAction SilentlyContinue
 
     # Build 7z argument list.  'a' = add, -mx = level, -t = type.
+    # Multiple -SourcePath entries are added to the SAME archive in one pass,
+    # so several selected folders/files end up combined into a single zip.
     $szArgs = [System.Collections.Generic.List[string]]::new()
-    $szArgs.AddRange([string[]]@('a', "-t$Format", "-mx=$Level", '-y', $ArchivePath, $SourcePath))
+    $szArgs.AddRange([string[]]@('a', "-t$Format", "-mx=$Level", '-y', $ArchivePath))
+    foreach ($sp in $SourcePath) { $szArgs.Add($sp) }
     if ($Format -eq '7z') { $szArgs.Add('-mmt=on') }          # multi-threaded
     if ($VolumeSizeMB -gt 0) { $szArgs.Add("-v${VolumeSizeMB}m") }   # split into volumes
     if ($ExtraFiles)      { foreach ($ef in $ExtraFiles) { $szArgs.Add($ef) } }
@@ -427,39 +430,52 @@ function Get-A4950FileHashes {
 
 function New-A4950Manifest {
     <#
-    .SYNOPSIS Hash every file under a source path and write a manifest file.
+    .SYNOPSIS Hash every file under one or more source paths and write a manifest file.
     .DESCRIPTION
         Produces a human-readable manifest and returns the manifest path plus the
         list of hashed records. Reports progress via -OnProgress { param($current,$total,$file) }.
+        When multiple -SourcePath entries are given (combined-archive mode), each
+        file's relative path is prefixed with its top-level item's own name so
+        files from different selections stay distinguishable and never collide.
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$SourcePath,
+        [Parameter(Mandatory)][string[]]$SourcePath,
         [Parameter(Mandatory)][string]$ManifestPath,
         [string]$CaseNumber = '',
         [string[]]$Algorithms = @('SHA256', 'MD5'),
         [scriptblock]$OnProgress
     )
 
-    $files = @()
-    if (Test-Path -LiteralPath $SourcePath -PathType Container) {
-        $files = Get-ChildItem -LiteralPath $SourcePath -Recurse -File -Force -ErrorAction SilentlyContinue
-    } else {
-        $files = @(Get-Item -LiteralPath $SourcePath)
+    # Gather (File, Root, Label) tuples across all source paths first, so a
+    # single running total/percentage can be reported for the whole set.
+    $entries = New-Object System.Collections.Generic.List[object]
+    foreach ($root in $SourcePath) {
+        $label = Split-Path -Leaf ($root.TrimEnd('\', '/'))
+        if (-not $label) { $label = $root }
+        if (Test-Path -LiteralPath $root -PathType Container) {
+            $kids = Get-ChildItem -LiteralPath $root -Recurse -File -Force -ErrorAction SilentlyContinue
+            foreach ($f in $kids) { $entries.Add([pscustomobject]@{ File = $f; Root = $root; Label = $label }) }
+        } elseif (Test-Path -LiteralPath $root) {
+            $entries.Add([pscustomobject]@{ File = (Get-Item -LiteralPath $root); Root = $root; Label = $label })
+        }
     }
 
+    $multi = @($SourcePath).Count -gt 1
     $records = New-Object System.Collections.Generic.List[object]
-    $total = $files.Count
+    $total = $entries.Count
     $i = 0
-    foreach ($f in $files) {
+    foreach ($e in $entries) {
         $i++
+        $f = $e.File
         if ($OnProgress) { & $OnProgress $i $total $f.FullName }
         $h = Get-A4950FileHashes -Path $f.FullName -Algorithms $Algorithms
         $rel = $f.FullName
-        if ($f.FullName.Length -gt $SourcePath.Length -and $f.FullName.StartsWith($SourcePath)) {
-            $rel = $f.FullName.Substring($SourcePath.Length).TrimStart('\', '/')
+        if ($f.FullName.Length -gt $e.Root.Length -and $f.FullName.StartsWith($e.Root)) {
+            $rel = $f.FullName.Substring($e.Root.Length).TrimStart('\', '/')
         }
         if ([string]::IsNullOrWhiteSpace($rel)) { $rel = $f.Name }
+        if ($multi) { $rel = "$($e.Label)\$rel" }   # disambiguate across combined top-level items
         $rec = [ordered]@{
             RelativePath = $rel
             SizeBytes    = $f.Length
@@ -474,7 +490,7 @@ function New-A4950Manifest {
     [void]$sb.AppendLine('Auto4950 USB Transfer - Hash Manifest')
     [void]$sb.AppendLine('========================================')
     [void]$sb.AppendLine("Case Number   : $CaseNumber")
-    [void]$sb.AppendLine("Source        : $SourcePath")
+    [void]$sb.AppendLine("Source        : $($SourcePath -join '; ')")
     [void]$sb.AppendLine("Generated UTC : $([DateTime]::UtcNow.ToString('o'))")
     [void]$sb.AppendLine("Machine       : $env:COMPUTERNAME")
     [void]$sb.AppendLine("Operator      : $env:USERNAME")

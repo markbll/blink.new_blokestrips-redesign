@@ -170,77 +170,146 @@ function Invoke-A4950TransferJob {
         $consumerHandle = $consumerPs.BeginInvoke()
 
         # ---------------------------------------------------------------------
-        # Producer: hash + compress each top-level item, enqueue for transfer.
+        # Producer: hash + compress the selection, enqueue archive(s) for transfer.
+        # SplitPerTopLevel = true  -> one archive PER selected top-level item.
+        # SplitPerTopLevel = false -> ALL selected items combined into ONE archive.
         # ---------------------------------------------------------------------
         $volMB = 0
         try { $volMB = [int]$cfg.VolumeSizeMB } catch {}
-        $totalItems = $items.Count
-        $idx = 0
-        $usedNames = @{}   # de-dupe archive base names (two selections can share a leaf name)
-        foreach ($item in $items) {
-          if ($Shared.Cancel) { Write-A4950WorkerLog $Shared 'Cancellation requested - stopping.' 'WARN'; break }
-          $idx++
-          try {
-            if (-not (Test-Path -LiteralPath $item)) { Write-A4950WorkerLog $Shared "SKIP (missing): $item" 'WARN'; continue }
-            $itemName = Split-Path -Leaf $item.TrimEnd('\', '/')
-            if (-not $itemName) { $itemName = 'root' }
-            $itemName = New-A4950CaseFolderName -CaseNumber $itemName
-            # Ensure a unique base name for this job's staging/archives.
-            if ($usedNames.ContainsKey($itemName.ToLower())) {
-                $usedNames[$itemName.ToLower()]++
-                $itemName = "{0}_{1}" -f $itemName, $usedNames[$itemName.ToLower()]
-            } else { $usedNames[$itemName.ToLower()] = 1 }
-            Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage = 'item'; Current = $idx; Total = $totalItems; Name = $itemName }
-            Write-A4950WorkerLog $Shared "--- [$idx/$totalItems] Processing '$itemName' ---" 'STEP'
+        $splitPerTop = $true
+        if ($cfg.PSObject.Properties['SplitPerTopLevel']) { $splitPerTop = [bool]$cfg.SplitPerTopLevel }
 
-            # 1) Hash originals -> manifest
-            $manifestPath = Join-Path $staging ("{0}__{1}_MANIFEST.txt" -f $caseSafe, $itemName)
-            $extraFiles = @()
-            if ($cfg.EmbedManifest) {
-                Write-A4950WorkerLog $Shared "Hashing originals ($($cfg.HashAlgorithms -join ', '))..."
-                $m = New-A4950Manifest -SourcePath $item -ManifestPath $manifestPath -CaseNumber $case `
-                        -Algorithms $cfg.HashAlgorithms `
-                        -OnProgress ({
-                            param($c, $t, $f)
-                            if ($Shared.Cancel) { return }
-                            if ($t -gt 0 -and ($c % 25 -eq 0 -or $c -eq $t)) {
-                                Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='hash'; Current=$c; Total=$t; Name=(Split-Path -Leaf $f) }
-                            }
-                        }.GetNewClosure())
-                Write-A4950WorkerLog $Shared "Manifest   : $($m.FileCount) files hashed -> $(Split-Path -Leaf $manifestPath)" 'OK'
-                $extraFiles = @($manifestPath, $m.CsvPath)
-            }
-            if ($Shared.Cancel) { break }
+        if ($splitPerTop) {
+            $totalItems = $items.Count
+            $idx = 0
+            $usedNames = @{}   # de-dupe archive base names (two selections can share a leaf name)
+            foreach ($item in $items) {
+              if ($Shared.Cancel) { Write-A4950WorkerLog $Shared 'Cancellation requested - stopping.' 'WARN'; break }
+              $idx++
+              try {
+                if (-not (Test-Path -LiteralPath $item)) { Write-A4950WorkerLog $Shared "SKIP (missing): $item" 'WARN'; continue }
+                $itemName = Split-Path -Leaf $item.TrimEnd('\', '/')
+                if (-not $itemName) { $itemName = 'root' }
+                $itemName = New-A4950CaseFolderName -CaseNumber $itemName
+                # Ensure a unique base name for this job's staging/archives.
+                if ($usedNames.ContainsKey($itemName.ToLower())) {
+                    $usedNames[$itemName.ToLower()]++
+                    $itemName = "{0}_{1}" -f $itemName, $usedNames[$itemName.ToLower()]
+                } else { $usedNames[$itemName.ToLower()] = 1 }
+                Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage = 'item'; Current = $idx; Total = $totalItems; Name = $itemName }
+                Write-A4950WorkerLog $Shared "--- [$idx/$totalItems] Processing '$itemName' ---" 'STEP'
 
-            # 2) Compress (with manifest embedded). Split into volumes if configured.
-            $archivePath = Join-Path $staging ("{0}__{1}.{2}" -f $caseSafe, $itemName, $cfg.ArchiveFormat)
-            $splitNote = if ($volMB -gt 0) { " split @ ${volMB} MB" } else { '' }
-            Write-A4950WorkerLog $Shared "Compressing: $itemName -> $(Split-Path -Leaf $archivePath) (level $($cfg.CompressionLevel)$splitNote)" 'STEP'
-            Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=-1; Name=$itemName }
-            $a = New-A4950Archive -SevenZipPath $sevenZip -SourcePath $item -ArchivePath $archivePath `
-                    -Level $cfg.CompressionLevel -Format $cfg.ArchiveFormat -VolumeSizeMB $volMB -Password $cfg.Password `
-                    -ExcludePatterns $cfg.ExcludePatterns -ExtraFiles $extraFiles -CancelCheck $cancel
-
-            if ($a.Cancelled) { Write-A4950WorkerLog $Shared "Compression cancelled: $itemName" 'WARN'; break }
-            Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=100; Name=$itemName }
-
-            if ($a.Success) {
-                $parts = @($a.Files)
-                $desc = if ($parts.Count -gt 1) { "$($parts.Count) volume(s)" } else { Split-Path -Leaf $parts[0] }
-                Write-A4950WorkerLog $Shared "Compressed : $itemName -> $desc" 'OK'
-                # Hand each produced file off to the transfer consumer immediately -> pipelined.
-                foreach ($p in $parts) {
-                    $transferQueue.Enqueue($p)
-                    Write-A4950WorkerLog $Shared "Queued for transfer: $(Split-Path -Leaf $p)" 'INFO'
+                # 1) Hash originals -> manifest
+                $manifestPath = Join-Path $staging ("{0}__{1}_MANIFEST.txt" -f $caseSafe, $itemName)
+                $extraFiles = @()
+                if ($cfg.EmbedManifest) {
+                    Write-A4950WorkerLog $Shared "Hashing originals ($($cfg.HashAlgorithms -join ', '))..."
+                    $m = New-A4950Manifest -SourcePath $item -ManifestPath $manifestPath -CaseNumber $case `
+                            -Algorithms $cfg.HashAlgorithms `
+                            -OnProgress ({
+                                param($c, $t, $f)
+                                if ($Shared.Cancel) { return }
+                                if ($t -gt 0 -and ($c % 25 -eq 0 -or $c -eq $t)) {
+                                    Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='hash'; Current=$c; Total=$t; Name=(Split-Path -Leaf $f) }
+                                }
+                            }.GetNewClosure())
+                    Write-A4950WorkerLog $Shared "Manifest   : $($m.FileCount) files hashed -> $(Split-Path -Leaf $manifestPath)" 'OK'
+                    $extraFiles = @($manifestPath, $m.CsvPath)
                 }
-            } else {
-                Write-A4950WorkerLog $Shared "COMPRESS FAIL: $itemName (exit $($a.ExitCode))" 'ERROR'
+                if ($Shared.Cancel) { break }
+
+                # 2) Compress (with manifest embedded). Split into volumes if configured.
+                $archivePath = Join-Path $staging ("{0}__{1}.{2}" -f $caseSafe, $itemName, $cfg.ArchiveFormat)
+                $splitNote = if ($volMB -gt 0) { " split @ ${volMB} MB" } else { '' }
+                Write-A4950WorkerLog $Shared "Compressing: $itemName -> $(Split-Path -Leaf $archivePath) (level $($cfg.CompressionLevel)$splitNote)" 'STEP'
+                Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=-1; Name=$itemName }
+                $a = New-A4950Archive -SevenZipPath $sevenZip -SourcePath $item -ArchivePath $archivePath `
+                        -Level $cfg.CompressionLevel -Format $cfg.ArchiveFormat -VolumeSizeMB $volMB -Password $cfg.Password `
+                        -ExcludePatterns $cfg.ExcludePatterns -ExtraFiles $extraFiles -CancelCheck $cancel
+
+                if ($a.Cancelled) { Write-A4950WorkerLog $Shared "Compression cancelled: $itemName" 'WARN'; break }
+                Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=100; Name=$itemName }
+
+                if ($a.Success) {
+                    $parts = @($a.Files)
+                    $desc = if ($parts.Count -gt 1) { "$($parts.Count) volume(s)" } else { Split-Path -Leaf $parts[0] }
+                    Write-A4950WorkerLog $Shared "Compressed : $itemName -> $desc" 'OK'
+                    # Hand each produced file off to the transfer consumer immediately -> pipelined.
+                    foreach ($p in $parts) {
+                        $transferQueue.Enqueue($p)
+                        Write-A4950WorkerLog $Shared "Queued for transfer: $(Split-Path -Leaf $p)" 'INFO'
+                    }
+                } else {
+                    Write-A4950WorkerLog $Shared "COMPRESS FAIL: $itemName (exit $($a.ExitCode))" 'ERROR'
+                }
+              }
+              catch {
+                # Fault handling: one bad item must not abort the whole job.
+                Write-A4950WorkerLog $Shared "ERROR processing item '$item': $($_.Exception.Message)" 'ERROR'
+              }
             }
-          }
-          catch {
-            # Fault handling: one bad item must not abort the whole job.
-            Write-A4950WorkerLog $Shared "ERROR processing item '$item': $($_.Exception.Message)" 'ERROR'
-          }
+        } else {
+            # ---- Combined mode: every selected item goes into ONE archive. ----
+            $existingItems = @()
+            foreach ($it in $items) {
+                if (Test-Path -LiteralPath $it) { $existingItems += $it }
+                else { Write-A4950WorkerLog $Shared "SKIP (missing): $it" 'WARN' }
+            }
+            if (-not $Shared.Cancel -and $existingItems.Count -gt 0) {
+              try {
+                Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage = 'item'; Current = 1; Total = 1; Name = "$($existingItems.Count) combined item(s)" }
+                Write-A4950WorkerLog $Shared "--- Combining $($existingItems.Count) selected item(s) into one archive ---" 'STEP'
+
+                # 1) Hash ALL originals -> one manifest covering every selected item
+                $manifestPath = Join-Path $staging ("{0}_MANIFEST.txt" -f $caseSafe)
+                $extraFiles = @()
+                if ($cfg.EmbedManifest) {
+                    Write-A4950WorkerLog $Shared "Hashing originals ($($cfg.HashAlgorithms -join ', '))..."
+                    $m = New-A4950Manifest -SourcePath $existingItems -ManifestPath $manifestPath -CaseNumber $case `
+                            -Algorithms $cfg.HashAlgorithms `
+                            -OnProgress ({
+                                param($c, $t, $f)
+                                if ($Shared.Cancel) { return }
+                                if ($t -gt 0 -and ($c % 25 -eq 0 -or $c -eq $t)) {
+                                    Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='hash'; Current=$c; Total=$t; Name=(Split-Path -Leaf $f) }
+                                }
+                            }.GetNewClosure())
+                    Write-A4950WorkerLog $Shared "Manifest   : $($m.FileCount) files hashed -> $(Split-Path -Leaf $manifestPath)" 'OK'
+                    $extraFiles = @($manifestPath, $m.CsvPath)
+                }
+
+                if (-not $Shared.Cancel) {
+                    # 2) Compress ALL items together into ONE archive. Split into volumes if configured.
+                    $archivePath = Join-Path $staging ("{0}.{1}" -f $caseSafe, $cfg.ArchiveFormat)
+                    $splitNote = if ($volMB -gt 0) { " split @ ${volMB} MB" } else { '' }
+                    Write-A4950WorkerLog $Shared "Compressing: $($existingItems.Count) item(s) -> $(Split-Path -Leaf $archivePath) (level $($cfg.CompressionLevel)$splitNote)" 'STEP'
+                    Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=-1; Name=$caseSafe }
+                    $a = New-A4950Archive -SevenZipPath $sevenZip -SourcePath $existingItems -ArchivePath $archivePath `
+                            -Level $cfg.CompressionLevel -Format $cfg.ArchiveFormat -VolumeSizeMB $volMB -Password $cfg.Password `
+                            -ExcludePatterns $cfg.ExcludePatterns -ExtraFiles $extraFiles -CancelCheck $cancel
+
+                    if ($a.Cancelled) {
+                        Write-A4950WorkerLog $Shared "Compression cancelled: $caseSafe" 'WARN'
+                    } else {
+                        Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=100; Name=$caseSafe }
+                        if ($a.Success) {
+                            $parts = @($a.Files)
+                            $desc = if ($parts.Count -gt 1) { "$($parts.Count) volume(s)" } else { Split-Path -Leaf $parts[0] }
+                            Write-A4950WorkerLog $Shared "Compressed : $($existingItems.Count) item(s) -> $desc" 'OK'
+                            foreach ($p in $parts) {
+                                $transferQueue.Enqueue($p)
+                                Write-A4950WorkerLog $Shared "Queued for transfer: $(Split-Path -Leaf $p)" 'INFO'
+                            }
+                        } else {
+                            Write-A4950WorkerLog $Shared "COMPRESS FAIL: $caseSafe (exit $($a.ExitCode))" 'ERROR'
+                        }
+                    }
+                }
+              }
+              catch {
+                Write-A4950WorkerLog $Shared "ERROR combining selected items: $($_.Exception.Message)" 'ERROR'
+              }
+            }
         }
 
         # Signal producer completion and wait for the consumer to drain.

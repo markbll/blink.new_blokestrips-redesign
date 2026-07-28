@@ -31,6 +31,7 @@ starts uploading while the next is still compressing.
 | SHA-256 + MD5 of originals | Per-file manifest (`.txt` + `.csv`), **embedded in the archive** |
 | Transfer to a network share | UNC path from config; robocopy with Copy-Item fallback |
 | Start transfer early (speed) | Producer/consumer pipeline: transfer begins as soon as the first archive/volume is written |
+| Combine into one archive | Optional toggle: pack every selected folder/file into a SINGLE zip/7z instead of one archive per top-level item |
 | Live transfer status | Per-file transfer status + running count on screen |
 | Instant cancel + cleanup | Cancel kills 7-Zip/robocopy in ~150 ms and deletes temp files |
 | Temp cleanup on success | Each file is removed from staging once its transfer is **confirmed** (copied, and hash-verified if verification is on); the whole temp job folder is swept at the end once *everything* is confirmed. Nothing is deleted if a file failed or failed verification |
@@ -151,6 +152,12 @@ See `config.example.json`. Key settings:
 - **NetworkShare** — UNC destination, e.g. `\\SERVER\Evidence$`.
 - **SevenZipPath** — leave blank to auto-detect.
 - **ArchiveFormat** — `zip` (default, portable) or `7z` (smaller, AES-256).
+- **SplitPerTopLevel** — `true` (default): one archive **per top-level
+  selection**, transferred as each finishes compressing (fastest). Set to
+  `false` (or tick "Combine all selected folders/files into ONE archive") to
+  pack **everything selected into a single zip/7z** instead — one manifest
+  covering every item, files distinguished by their original top-level folder
+  name. Nothing transfers until that single archive finishes.
 - **VolumeSizeMB** — split archives into volumes of this size in MB
   (default **2048** = 2 GB); `0` = one file. Changeable in Setup **and** Settings.
 - **CompressionLevel** — `0` (store, fastest) … `9` (ultra, smallest).

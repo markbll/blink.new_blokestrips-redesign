@@ -89,11 +89,20 @@ detects this and will tell you.
 
 ### Options panel (all settings, on the main screen)
 Everything is editable on the right-hand **Options** panel — network share,
-7-Zip path, staging folder, case prefix, **archive format**, **volume/split
-size (sizing)**, compression level, password, hashing, manifest embedding,
-verification, prompt-on-insert, select-all default, delete-local and exclude
-patterns. Changes apply immediately when you press **Start**; **Save Options**
-writes them to `config.json`. Every checkbox can be ticked *and* un-ticked.
+7-Zip path, staging folder, case prefix, **archive format**, **combine into one
+archive**, **volume/split size (sizing)**, compression level, password,
+hashing, manifest embedding, verification, prompt-on-insert, select-all
+default, delete-local and exclude patterns. Changes apply immediately when you
+press **Start**; **Save Options** writes them to `config.json`. Every checkbox
+can be ticked *and* un-ticked.
+
+**Combine all selected folders/files into ONE archive** — by default (off),
+each top-level folder/file you tick becomes its **own** archive, which starts
+transferring the moment it's ready while the next one compresses (fastest
+overall). Tick this to instead pack **everything you've selected into a single
+zip/7z** — one shared manifest lists every file, prefixed with its original
+top-level folder name so nothing collides. Because there's only one archive,
+nothing transfers until that single compression pass finishes.
 
 ---
 

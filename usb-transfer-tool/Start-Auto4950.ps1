@@ -267,6 +267,9 @@ $script:WorkerHandle = $null
               <TextBlock Text="SIZING / COMPRESSION" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,2,0,4"/>
               <TextBlock Text="Archive format"/>
               <ComboBox x:Name="OptFormat"><ComboBoxItem>zip</ComboBoxItem><ComboBoxItem>7z</ComboBoxItem></ComboBox>
+              <CheckBox x:Name="OptCombine" Content="Combine all selected folders/files into ONE archive" Margin="0,4,0,8"/>
+              <TextBlock Text="(unchecked = one archive per top-level selection, transferred as each finishes - fastest; checked = a single zip containing everything selected)"
+                         Foreground="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,-4,0,8"/>
               <TextBlock Text="Split size (per volume)"/>
               <ComboBox x:Name="OptVolume" IsEditable="True">
                 <ComboBoxItem>No split (single file)</ComboBoxItem>
@@ -591,6 +594,7 @@ function Set-OptionsFromConfig {
     $ctrl.OptSelDefault.IsChecked = [bool]$config.DefaultSelectAll
     $ctrl.ChkAuto.IsChecked       = [bool]$config.AutoTransfer
     $ctrl.OptExcl.Text            = ($config.ExcludePatterns -join ', ')
+    $ctrl.OptCombine.IsChecked    = -not [bool]$config.SplitPerTopLevel
     foreach ($it in $ctrl.OptFormat.Items) { if ($it.Content -eq $config.ArchiveFormat) { $ctrl.OptFormat.SelectedItem = $it } }
 }
 
@@ -601,6 +605,7 @@ function Sync-OptionsToConfig {
     $config.StagingFolder = $ctrl.OptStage.Text.Trim()
     if ($ctrl.OptPrefix.Text.Trim()) { $config.CasePrefix = $ctrl.OptPrefix.Text.Trim() }
     if ($ctrl.OptFormat.SelectedItem) { $config.ArchiveFormat = $ctrl.OptFormat.SelectedItem.Content }
+    $config.SplitPerTopLevel = -not [bool]$ctrl.OptCombine.IsChecked
     $config.VolumeSizeMB     = Parse-SplitMB ([string]$ctrl.OptVolume.Text)
     $config.CompressionLevel = [int]$ctrl.OptLevel.Value
     $algs = @(); if ($ctrl.OptSha.IsChecked) { $algs += 'SHA256' }; if ($ctrl.OptMd5.IsChecked) { $algs += 'MD5' }
@@ -738,7 +743,8 @@ function Update-Footer {
     $auto  = if ($config.AutoTransfer) { 'Auto: ON' } else { 'Auto: off' }
     $hash  = if ($config.EmbedManifest) { "Hash:$($config.HashAlgorithms -join '+')" } else { 'Hash:OFF' }
     $vfy   = if ($config.VerifyAfterTransfer) { 'Verify:on' } else { 'Verify:off' }
-    $ctrl.LblDest.Text = "Dest: $($config.NetworkShare)   |   7-Zip: $sz   |   $($config.ArchiveFormat)  L$($config.CompressionLevel)  $split  $hash  $vfy   |   $auto"
+    $combine = if ([bool]$config.SplitPerTopLevel) { 'Archives: per-item' } else { 'Archives: combined' }
+    $ctrl.LblDest.Text = "Dest: $($config.NetworkShare)   |   7-Zip: $sz   |   $($config.ArchiveFormat)  L$($config.CompressionLevel)  $split  $combine  $hash  $vfy   |   $auto"
 }
 
 # ----------------------------------------------------------------------------
@@ -970,18 +976,27 @@ function Start-Capture {
     if (-not $spaceCheck.Proceed) { return }
 
     if (-not $NoConfirm) {
-        # List each selected item's FULL source path, the destination folder and the zip names.
+        # List each selected item's FULL source path, the destination folder and the zip name(s).
         # (Re-read $config.ArchiveFormat here - the space check may have just adjusted it.)
         $fmt = $config.ArchiveFormat
         $splitSuffix = if ([int]$config.VolumeSizeMB -gt 0) { ".001, .002, ..." } else { '' }
-        $lines = foreach ($it in $items) {
-            $leaf = Split-Path -Leaf ($it.TrimEnd('\','/'))
-            if (-not $leaf) { $leaf = 'root' }
-            "   SOURCE: $it`n      -> ${caseSafe}__$leaf.$fmt$splitSuffix"
+        if ([bool]$config.SplitPerTopLevel) {
+            $lines = foreach ($it in $items) {
+                $leaf = Split-Path -Leaf ($it.TrimEnd('\','/'))
+                if (-not $leaf) { $leaf = 'root' }
+                "   SOURCE: $it`n      -> ${caseSafe}__$leaf.$fmt$splitSuffix"
+            }
+            $maxShow = 15
+            $shown = @($lines | Select-Object -First $maxShow)
+            if ($items.Count -gt $maxShow) { $shown += "   ... and $($items.Count - $maxShow) more" }
+            $archiveNote = "Selected items (full source path)  ->  archive name:`n$($shown -join "`n")"
+        } else {
+            $lines = foreach ($it in $items) { "   SOURCE: $it" }
+            $maxShow = 15
+            $shown = @($lines | Select-Object -First $maxShow)
+            if ($items.Count -gt $maxShow) { $shown += "   ... and $($items.Count - $maxShow) more" }
+            $archiveNote = "COMBINED into ONE archive - ${caseSafe}.$fmt$splitSuffix`n`nSelected items (full source path):`n$($shown -join "`n")"
         }
-        $maxShow = 15
-        $shown = @($lines | Select-Object -First $maxShow)
-        if ($items.Count -gt $maxShow) { $shown += "   ... and $($items.Count - $maxShow) more" }
         $destPath = Join-Path $config.NetworkShare $caseSafe
         $srcRootFull = "$(Get-SelectedDriveRoot)\"
         $integrity = if ($config.EmbedManifest) {
@@ -998,8 +1013,7 @@ $($spaceCheck.Note)
 Source (full path) : $srcRootFull
 Destination folder : $destPath
 
-Selected items (full source path)  ->  archive name:
-$($shown -join "`n")
+$archiveNote
 
 $integrity
 "@
@@ -1263,16 +1277,27 @@ AUTO-TRANSFER
   requires that a valid CMS case, OP name or pass number is already entered.
   If none is set you'll be asked to provide one.
 
+COMBINE INTO ONE ARCHIVE
+  By default, each top-level folder/file you select becomes its OWN archive,
+  which starts transferring as soon as it's ready while the next one compresses
+  (fastest). Tick "Combine all selected folders/files into ONE archive" in
+  Options to instead pack everything you selected into a SINGLE zip/7z file
+  (one manifest covering every item, files distinguished by their original
+  top-level folder name). Combining means nothing transfers until that one
+  archive finishes compressing.
+
 OPTIONS (all on the main screen, right-hand panel)
   Network share, 7-Zip path, staging folder, case prefix, archive format,
-  volume/split size, compression level, password, hashing, manifest embedding,
-  verification, prompt-on-insert, select-all default, delete-local and exclude
-  patterns. Every option can be toggled/edited and "Save Options" persists them
-  to config.json. Options also apply immediately when you press Start.
+  combine-into-one-archive, volume/split size, compression level, password,
+  hashing, manifest embedding, verification, prompt-on-insert, select-all
+  default, delete-local and exclude patterns. Every option can be toggled/
+  edited and "Save Options" persists them to config.json. Options also apply
+  immediately when you press Start.
 
 WHAT HAPPENS
   - Every original file is hashed (SHA-256 / MD5) into a manifest.
-  - Each top-level item is compressed with 7-Zip; the manifest is embedded.
+  - Each top-level item is compressed with 7-Zip (or, if "Combine" is on, all
+    selected items together); the manifest is embedded.
   - Large archives are split into volumes ($([int]$config.VolumeSizeMB) MB each by default) so no
     single file is unwieldy. Set the size to 0 for one file per item.
   - As soon as the first archive/volume is ready it starts transferring to the

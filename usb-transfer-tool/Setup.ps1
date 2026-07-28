@@ -110,6 +110,7 @@ $configPath = Get-ConfigPath
         <TextBox x:Name="Prefix" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
         <TextBlock Text="Archive format" Foreground="#FFECECEC" FontWeight="SemiBold"/>
         <ComboBox x:Name="Fmt" Margin="0,2,0,10"><ComboBoxItem>zip</ComboBoxItem><ComboBoxItem>7z</ComboBoxItem></ComboBox>
+        <CheckBox x:Name="Combine" Content="Combine all selected items into ONE archive" Foreground="#FFECECEC" Margin="0,2,0,10"/>
         <TextBlock Text="Split into volumes of (MB, 0 = single file)" Foreground="#FFECECEC" FontWeight="SemiBold"/>
         <TextBox x:Name="Volume" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
       </StackPanel>
@@ -154,6 +155,7 @@ $g = { param($n) $w.FindName($n) }
 (& $g 'All').IsChecked    = [bool]$config.DefaultSelectAll
 (& $g 'Verify').IsChecked = [bool]$config.VerifyAfterTransfer
 (& $g 'Volume').Text = [string]([int]$config.VolumeSizeMB)
+(& $g 'Combine').IsChecked = -not [bool]$config.SplitPerTopLevel
 foreach ($it in (& $g 'Fmt').Items) { if ($it.Content -eq $config.ArchiveFormat) { (& $g 'Fmt').SelectedItem = $it } }
 
 (& $g 'BtnTestNet').Add_Click({
@@ -208,6 +210,7 @@ foreach ($it in (& $g 'Fmt').Items) { if ($it.Content -eq $config.ArchiveFormat)
     $config.CasePrefix          = (& $g 'Prefix').Text.Trim()
     $config.CompressionLevel    = [int](& $g 'Level').Value
     $config.ArchiveFormat       = (& $g 'Fmt').SelectedItem.Content
+    $config.SplitPerTopLevel    = -not [bool](& $g 'Combine').IsChecked
     $vol = 0; [void][int]::TryParse((& $g 'Volume').Text.Trim(), [ref]$vol); if ($vol -lt 0) { $vol = 0 }
     $config.VolumeSizeMB        = $vol
     $algs = @(); if ((& $g 'Sha').IsChecked) { $algs += 'SHA256' }; if ((& $g 'Md5').IsChecked) { $algs += 'MD5' }
