@@ -33,7 +33,9 @@ starts uploading while the next is still compressing.
 | Start transfer early (speed) | Producer/consumer pipeline: transfer begins as soon as the first archive/volume is written |
 | Live transfer status | Per-file transfer status + running count on screen |
 | Instant cancel + cleanup | Cancel kills 7-Zip/robocopy in ~150 ms and deletes temp files |
+| Temp cleanup on success | Each file is removed from staging once its transfer is **confirmed** (copied, and hash-verified if verification is on); the whole temp job folder is swept at the end once *everything* is confirmed. Nothing is deleted if a file failed or failed verification |
 | Failed-transfer log | If some files were already sent, a "FAILED TRANSFER" log (names, hashes, times) is written and sent |
+| Destination space check | Before starting, estimates the source size vs. destination free space; if it looks tight, suggests a compression level/format estimated to fit (or lets you continue/cancel) |
 | Full-screen GUI | The window opens maximised |
 | Real-time events/log | Colour-coded activity log (auto-scrolls) with hashes, file names, dates/times; per-case `.log` file |
 | Post-transfer verification | Re-hash the archive at the destination (SHA-256 match) |
@@ -44,7 +46,7 @@ starts uploading while the next is still compressing.
 
 - **Windows 10/11** (or Windows Server) with **Windows PowerShell 5.1** or **PowerShell 7**.
 - **7-Zip** installed — <https://www.7-zip.org>. The tool auto-detects `7z.exe`;
-  otherwise set its path in Settings.
+  otherwise set its path in the Options panel.
 - Permission to write to the configured network share.
 - A PowerShell **execution policy** that allows local scripts to run (see below).
 
@@ -156,8 +158,29 @@ See `config.example.json`. Key settings:
 - **VerifyAfterTransfer** — re-hash the archive at the destination.
 - **AutoTransfer** — start automatically on USB insert (needs a CMS case or OP name).
 - **StagingFolder** — local temp area for archives before transfer.
+- **DeleteLocalArchive** — delete each staged file once its transfer is
+  **confirmed** (default **on**); the whole temp job folder is removed once every
+  file in the job is confirmed. Anything not confirmed (failed copy, failed
+  verification, or a cancelled job) is left in place for review.
 - **Password** — optional AES-256 archive password (prefer setting per-session
-  in Settings rather than storing in plain text).
+  in the Options panel rather than storing in plain text).
+
+### Destination free-space check
+
+Before a capture starts, the tool sums the size of the selected items and
+compares it against an **estimate** of the compressed size at your current
+settings, then checks that estimate against the free space actually available
+at the destination (works for both UNC shares and local folders). If it looks
+like it won't fit:
+
+- **Auto-transfer** just logs a warning and continues — it never prompts.
+- **Manual start** shows a dialog with a suggested format/level expected to fit,
+  and lets you **apply it and continue**, **continue anyway**, or **cancel**.
+
+The compression estimate is a **planning heuristic only** — real compression is
+entirely data-dependent. Already-compressed media (photos, video, most zip/7z
+files) will shrink far less than the estimate suggests; the number is meant to
+catch an obvious shortfall, not to predict the exact archive size.
 
 ---
 

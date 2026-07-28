@@ -47,7 +47,7 @@ function Get-DefaultConfig {
         AutoTransfer        = $false                   # Start automatically on insert if a CMS case / OP name is set
         DefaultSelectAll    = $true                    # Pre-select all folders/files by default
         VerifyAfterTransfer = $true                    # Re-hash the archive at destination
-        DeleteLocalArchive  = $false                   # Remove staged archive after successful transfer
+        DeleteLocalArchive  = $true                    # Remove staged/temp files once confirmed transferred
         StagingFolder       = '$env:TEMP\Auto4950'  # Where archives are staged before transfer
         # --- Excludes ----------------------------------------------------------
         ExcludePatterns     = @('System Volume Information', '$RECYCLE.BIN', 'Thumbs.db')
@@ -700,6 +700,117 @@ function Get-A4950SystemStats {
         TempFreeGB   = [double]$tempFreeGB
         TempTotalGB  = [double]$tempTotalGB
     }
+}
+
+#endregion
+
+#region ------------------------------------------------------------ Free space & compression estimate
+
+function Format-A4950Bytes {
+    <#
+    .SYNOPSIS Human-readable byte size, e.g. 1536000000 -> "1.43 GB".
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][double]$Bytes)
+    if ($Bytes -lt 0) { return 'unknown' }
+    $units = 'B', 'KB', 'MB', 'GB', 'TB'
+    $i = 0; $v = [double]$Bytes
+    while ($v -ge 1024 -and $i -lt $units.Count - 1) { $v /= 1024; $i++ }
+    "{0:N2} {1}" -f $v, $units[$i]
+}
+
+function Get-A4950PathSizeBytes {
+    <#
+    .SYNOPSIS Total size in bytes of a file, or recursively of a folder.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return 0 }
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        try { return [int64](Get-Item -LiteralPath $Path -ErrorAction Stop).Length } catch { return 0 }
+    }
+    try {
+        $sum = Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue |
+            Measure-Object -Property Length -Sum
+        if ($sum.Sum) { return [int64]$sum.Sum } else { return 0 }
+    } catch { return 0 }
+}
+
+function Get-A4950CompressionRatio {
+    <#
+    .SYNOPSIS Rough PLANNING estimate of compressed-size / original-size.
+    .DESCRIPTION
+        Actual compression is entirely data-dependent (already-compressed media
+        such as JPEG/MP4/ZIP barely shrinks; plain text/office documents shrink
+        a lot). This heuristic exists only to size a free-space check and
+        suggest settings - it is not a guarantee of the real archive size.
+    #>
+    [CmdletBinding()]
+    param(
+        [ValidateRange(0, 9)][int]$Level,
+        [ValidateSet('7z', 'zip')][string]$Format = 'zip'
+    )
+    $table = @{ 0 = 1.00; 1 = 0.92; 2 = 0.87; 3 = 0.82; 4 = 0.75; 5 = 0.68; 6 = 0.62; 7 = 0.58; 8 = 0.55; 9 = 0.52 }
+    $ratio = $table[$Level]
+    if ($Format -eq '7z' -and $Level -gt 0) { $ratio *= 0.93 }   # 7z format typically edges out zip
+    return [math]::Round($ratio, 3)
+}
+
+function Get-A4950FreeSpace {
+    <#
+    .SYNOPSIS Free/total space for a local folder or a UNC share destination.
+    .DESCRIPTION
+        Local paths use [System.IO.DriveInfo]. UNC paths (\\server\share\...)
+        have no direct .NET API, so the Scripting.FileSystemObject COM object
+        is used - it reports free space for a UNC share without needing a
+        mapped drive letter.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    $result = [pscustomobject]@{ Ok = $false; FreeBytes = -1L; TotalBytes = -1L; Error = '' }
+    try {
+        if ($Path -match '^[A-Za-z]:\\') {
+            $qualifier = Split-Path -Qualifier $Path
+            $di = [System.IO.DriveInfo]::new($qualifier)
+            $result.FreeBytes  = [int64]$di.AvailableFreeSpace
+            $result.TotalBytes = [int64]$di.TotalSize
+            $result.Ok = $true
+        } else {
+            $probe = $Path
+            if (-not (Test-Path -LiteralPath $probe)) { $probe = Split-Path -Parent $probe }
+            $fso = New-Object -ComObject Scripting.FileSystemObject
+            $driveName = $fso.GetDriveName($fso.GetAbsolutePathName($probe))
+            $drv = $fso.GetDrive($driveName)
+            $result.FreeBytes  = [int64]$drv.FreeSpace
+            $result.TotalBytes = [int64]$drv.TotalSize
+            $result.Ok = $true
+        }
+    } catch {
+        $result.Error = $_.Exception.Message
+    }
+    return $result
+}
+
+function Get-A4950SuggestedCompression {
+    <#
+    .SYNOPSIS Find the fastest format/level whose estimated size fits in the free space.
+    .OUTPUTS $null if nothing fits, even at maximum (level 9, 7z) compression.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][int64]$SourceBytes,
+        [Parameter(Mandatory)][int64]$FreeBytes
+    )
+    foreach ($fmt in @('zip', '7z')) {
+        for ($lvl = 0; $lvl -le 9; $lvl++) {
+            $ratio = Get-A4950CompressionRatio -Level $lvl -Format $fmt
+            $est = [int64]($SourceBytes * $ratio * 1.02)   # +2% archive/manifest overhead
+            if ($est -lt $FreeBytes) {
+                return [pscustomobject]@{ Level = $lvl; Format = $fmt; EstimatedBytes = $est }
+            }
+        }
+    }
+    return $null
 }
 
 #endregion

@@ -101,12 +101,28 @@ writes them to `config.json`. Every checkbox can be ticked *and* un-ticked.
 
 1. **Connect the USB drive** — it is scanned and its contents listed. With
    prompt-on-insert on (and auto-transfer off) a **Yes/No** dialog appears.
-2. Confirm/adjust the **selection** and enter a **CMS case or OP name**.
-3. Click **Start Capture** → confirm the summary dialog (skipped under
-   auto-transfer).
-4. Watch the **activity log** and **job progress**:
+2. Confirm/adjust the **selection** and enter a **CMS case, OP name or pass
+   number**.
+3. Click **Start Capture**. The tool first runs a **destination free-space
+   check** (see below); if that passes, confirm the summary dialog — it lists
+   every selected item's full source path, the destination folder and the
+   resulting archive names. (Both the space check and this dialog are skipped
+   under auto-transfer, which never prompts.)
+4. A **"Transfer in progress"** window opens, mirroring the activity log and
+   showing compress/transfer progress and a running transferred-file count.
+5. Watch the **activity log**:
    - `STEP` (blue) = stage boundaries, `OK` (green) = success,
      `WARN` (amber), `ERROR` (red).
+
+### Destination free-space check
+Before the job starts, the tool sums the size of your selected items and
+estimates the compressed size at your current settings, then compares that to
+the free space actually available at the destination (UNC share or local
+folder). If it looks like it won't fit, a dialog offers a suggested
+format/compression level expected to fit — **Apply Suggested Settings &
+Continue**, **Continue Anyway**, or **Cancel**. This is a **planning estimate
+only**: already-compressed data (photos, video, zip/7z files) shrinks far less
+than typical documents, so treat the suggestion as a guide, not a guarantee.
 
 ### What happens internally (per top-level item)
 1. **Hash** every original file → manifest (`.txt` human-readable + `.csv`).
@@ -115,17 +131,30 @@ writes them to `config.json`. Every checkbox can be ticked *and* un-ticked.
    while the **next item compresses** — this is the pipeline that gives you
    speed.
 4. **Transfer** via robocopy (retry/resume) to
-   `\\share\<CASE>\<CASE>__<item>.<fmt>`.
+   `\\share\<CASE>\<CASE>__<item>.<fmt>`. A destination file name clash is
+   never overwritten — a date/time is appended instead.
 5. If **VerifyAfterTransfer** is on, the archive is **re-hashed at the
    destination** and compared (SHA-256).
-6. Optionally the **local staged archive is deleted** after success.
+6. Once a file's transfer is **confirmed** (copied, and hash-verified if
+   verification is on), it is deleted from the local staging area straight
+   away — see "Temp cleanup" below.
 
 A per-case log is also written to
 `…\StagingFolder\<CASE>\<CASE>.log`.
 
+### Temp cleanup
+"Delete temp/staged files once confirmed transferred" (on by default) removes
+each local file the moment its transfer is confirmed, and sweeps the whole
+temp job folder once *every* file in the job is confirmed. If a file failed to
+copy, or failed verification, it — and the rest of that job's temp folder — is
+**left in place** for you to review; nothing is ever deleted on an unconfirmed
+or failed transfer.
+
 ### Cancelling
-**Cancel** requests a cooperative stop: the current file finishes, then the job
-stops. Already-transferred archives remain on the share.
+**Cancel** is immediate: it kills the running 7-Zip/robocopy process within a
+fraction of a second and deletes the temp files for the job. Archives already
+confirmed on the share stay there, and a "FAILED TRANSFER" log listing them
+(names, SHA-256, sizes, times) is written and sent to the destination.
 
 ---
 
@@ -172,7 +201,7 @@ re-run `Setup.ps1`). All values persist to `config.json`.
 | Auto-transfer | Start automatically on insert; needs a CMS case or OP name |
 | Select all by default | Pre-tick every folder/file |
 | Verify after transfer | Re-hash the archive at the destination |
-| Delete local archive | Remove the staged copy after success |
+| Delete temp/staged files once confirmed transferred | Default **on**. Removes each file once its transfer is confirmed, and the whole temp folder once the job is fully confirmed; failed/unverified items are kept |
 | Exclude patterns | Names to skip (e.g. `System Volume Information`) |
 
 ---

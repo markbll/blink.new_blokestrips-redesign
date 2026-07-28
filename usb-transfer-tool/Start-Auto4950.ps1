@@ -294,7 +294,7 @@ $script:WorkerHandle = $null
               <TextBlock Text="BEHAVIOUR" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,2,0,4"/>
               <CheckBox x:Name="OptPrompt"     Content="Prompt on USB insert (when auto-transfer is off)"/>
               <CheckBox x:Name="OptSelDefault" Content="Select all folders/files by default"/>
-              <CheckBox x:Name="OptDelete"     Content="Delete local staged archive after transfer"/>
+              <CheckBox x:Name="OptDelete"     Content="Delete temp/staged files once confirmed transferred"/>
               <TextBlock Text="Exclude patterns (comma separated)"/>
               <TextBox x:Name="OptExcl"/>
             </StackPanel>
@@ -328,7 +328,7 @@ $script:WorkerHandle = $null
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <TextBlock x:Name="LblDest" Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"
-                   Text="Destination: (configure in Settings)"/>
+                   Text="Destination: (configure in the Options panel)"/>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
           <Button x:Name="BtnStart"  Content="Start Capture" Background="#FF2E7D32" FontSize="14"/>
           <Button x:Name="BtnCancel" Content="Cancel" Background="#FF8E2A2A" IsEnabled="False"/>
@@ -821,6 +821,121 @@ function Close-ProgressWindow {
 # ----------------------------------------------------------------------------
 # Start / cancel the capture job
 # ----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# Destination free-space pre-flight check
+# ----------------------------------------------------------------------------
+function Show-SpaceWarningDialog {
+    param([string]$Message, [bool]$OfferApply)
+    [xml]$dx = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Destination free space" Height="420" Width="640" WindowStartupLocation="CenterOwner"
+        Background="#FF2A2A33" FontFamily="Segoe UI">
+  <Grid Margin="16">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <TextBlock Grid.Row="0" Text="Destination free space" FontSize="18" FontWeight="Bold" Foreground="#FFFFA726" Margin="0,0,0,8"/>
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+      <TextBlock x:Name="DMsg" TextWrapping="Wrap" Foreground="#FFECECEC" FontSize="13"/>
+    </ScrollViewer>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button x:Name="DApply"    Content="Apply Suggested Settings &amp; Continue" Padding="12,7" Margin="4" Background="#FF2E7D32" Foreground="#FFECECEC"/>
+      <Button x:Name="DContinue" Content="Continue Anyway" Padding="12,7" Margin="4" Background="#FFFFA726" Foreground="#FF202020"/>
+      <Button x:Name="DCancel"   Content="Cancel" Padding="12,7" Margin="4" Background="#FF3A3A46" Foreground="#FFECECEC"/>
+    </StackPanel>
+  </Grid>
+</Window>
+"@
+    $dw = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $dx))
+    $dw.Owner = $window
+    $g = { param($n) $dw.FindName($n) }
+    (& $g 'DMsg').Text = $Message
+    if (-not $OfferApply) { (& $g 'DApply').Visibility = 'Collapsed' }
+    $script:SpaceDialogResult = 'Cancel'
+    (& $g 'DApply').Add_Click({ $script:SpaceDialogResult = 'Apply'; $dw.Close() })
+    (& $g 'DContinue').Add_Click({ $script:SpaceDialogResult = 'Continue'; $dw.Close() })
+    (& $g 'DCancel').Add_Click({ $script:SpaceDialogResult = 'Cancel'; $dw.Close() })
+    [void]$dw.ShowDialog()
+    return $script:SpaceDialogResult
+}
+
+function Confirm-DestinationSpace {
+    <#
+    .SYNOPSIS Pre-flight check: estimate source size vs destination free space.
+    .DESCRIPTION
+        Returns @{ Proceed = [bool]; Note = [string] }. In -Silent mode (used for
+        auto-transfer, which must not prompt) a shortfall is logged as a warning
+        but never blocks. In interactive mode a shortfall offers to apply a
+        suggested format/level that is estimated to fit, continue anyway, or cancel.
+    #>
+    param([string[]]$Items, [switch]$Silent)
+
+    $prevCursor = $window.Cursor
+    $window.Cursor = [System.Windows.Input.Cursors]::Wait
+    Add-LogLine 'Estimating source size for the destination free-space check...' 'INFO'
+    $srcBytes = 0L
+    foreach ($it in $Items) { $srcBytes += [int64](Get-A4950PathSizeBytes -Path $it) }
+    $window.Cursor = $prevCursor
+
+    $free = Get-A4950FreeSpace -Path $config.NetworkShare
+    $ratio = Get-A4950CompressionRatio -Level ([int]$config.CompressionLevel) -Format $config.ArchiveFormat
+    $estBytes = [int64]($srcBytes * $ratio * 1.02)
+
+    if (-not $free.Ok) {
+        Add-LogLine "Could not determine destination free space: $($free.Error). Proceeding without a space check." 'WARN'
+        return @{ Proceed = $true; Note = "Destination free space: unknown (could not query destination)`nEstimated size to send: $(Format-A4950Bytes $estBytes)  (source: $(Format-A4950Bytes $srcBytes))" }
+    }
+
+    $safeFree = [int64]($free.FreeBytes * 0.95)   # keep a 5% safety margin
+    $note = "Destination free space : $(Format-A4950Bytes $free.FreeBytes)`nEstimated size to send  : $(Format-A4950Bytes $estBytes)  (source: $(Format-A4950Bytes $srcBytes), $($config.ArchiveFormat) level $($config.CompressionLevel))"
+
+    if ($estBytes -lt $safeFree) {
+        Add-LogLine "Free space check OK: $(Format-A4950Bytes $free.FreeBytes) free, ~$(Format-A4950Bytes $estBytes) estimated." 'OK'
+        return @{ Proceed = $true; Note = $note }
+    }
+
+    # Estimate exceeds (or is too close to) the free space.
+    if ($Silent) {
+        Add-LogLine "WARNING: destination free space may be insufficient - $(Format-A4950Bytes $free.FreeBytes) free, ~$(Format-A4950Bytes $estBytes) estimated needed. Continuing (auto-transfer, no prompts)." 'WARN'
+        return @{ Proceed = $true; Note = $note }
+    }
+
+    $suggestion = Get-A4950SuggestedCompression -SourceBytes $srcBytes -FreeBytes $safeFree
+    if ($suggestion) {
+        $msg = "The estimated compressed size may exceed the available free space at the destination.`n`n" +
+               "Source data (selected items)                     : $(Format-A4950Bytes $srcBytes)`n" +
+               "Current settings ($($config.ArchiveFormat), level $($config.CompressionLevel)) estimate : $(Format-A4950Bytes $estBytes)`n" +
+               "Free space at destination                        : $(Format-A4950Bytes $free.FreeBytes)`n`n" +
+               "SUGGESTION: switch to $($suggestion.Format) at compression level $($suggestion.Level) - " +
+               "estimated size ~$(Format-A4950Bytes $suggestion.EstimatedBytes), which should fit.`n`n" +
+               "These are PLANNING ESTIMATES only, not a guarantee - actual compression depends heavily " +
+               "on the data. Already-compressed files (photos, video, zips) shrink far less than this."
+        $resp = Show-SpaceWarningDialog -Message $msg -OfferApply $true
+        switch ($resp) {
+            'Apply' {
+                foreach ($it in $ctrl.OptFormat.Items) { if ($it.Content -eq $suggestion.Format) { $ctrl.OptFormat.SelectedItem = $it } }
+                $ctrl.OptLevel.Value = $suggestion.Level
+                $ctrl.OptLevelLbl.Text = "Compression level: $($suggestion.Level)"
+                Sync-OptionsToConfig
+                Update-Footer
+                Add-LogLine "Applied suggested settings: $($suggestion.Format) level $($suggestion.Level) (est. $(Format-A4950Bytes $suggestion.EstimatedBytes))." 'OK'
+                return @{ Proceed = $true; Note = "Destination free space : $(Format-A4950Bytes $free.FreeBytes)`nEstimated size to send  : $(Format-A4950Bytes $suggestion.EstimatedBytes)  (adjusted settings: $($suggestion.Format) level $($suggestion.Level))" }
+            }
+            'Continue' { Add-LogLine 'Continuing with current settings despite a possible space shortfall.' 'WARN'; return @{ Proceed = $true; Note = $note } }
+            default    { Add-LogLine 'Capture cancelled at the free-space warning.' 'INFO'; return @{ Proceed = $false } }
+        }
+    } else {
+        $msg = "The selected data is unlikely to fit at the destination even at MAXIMUM compression.`n`n" +
+               "Source data (selected items) : $(Format-A4950Bytes $srcBytes)`n" +
+               "Free space at destination    : $(Format-A4950Bytes $free.FreeBytes)`n`n" +
+               "Consider freeing up space at the destination, selecting fewer items, or choosing a " +
+               "different destination.`n`nThis is a PLANNING ESTIMATE only, not a guarantee."
+        $resp = Show-SpaceWarningDialog -Message $msg -OfferApply $false
+        if ($resp -eq 'Continue') { Add-LogLine 'Continuing despite an estimated space shortfall (no compression setting is expected to fit).' 'WARN'; return @{ Proceed = $true; Note = $note } }
+        Add-LogLine 'Capture cancelled at the free-space warning.' 'INFO'
+        return @{ Proceed = $false }
+    }
+}
+
 function Start-Capture {
     param([switch]$NoConfirm)
     if ($script:Shared.Running) { return }
@@ -849,8 +964,14 @@ function Start-Capture {
 
     $caseSafe = New-A4950CaseFolderName $name
 
+    # Pre-flight: estimate source size vs. destination free space; suggest
+    # a tighter compression setting (interactively) if it looks like it won't fit.
+    $spaceCheck = Confirm-DestinationSpace -Items $items -Silent:$NoConfirm
+    if (-not $spaceCheck.Proceed) { return }
+
     if (-not $NoConfirm) {
         # List each selected item's FULL source path, the destination folder and the zip names.
+        # (Re-read $config.ArchiveFormat here - the space check may have just adjusted it.)
         $fmt = $config.ArchiveFormat
         $splitSuffix = if ([int]$config.VolumeSizeMB -gt 0) { ".001, .002, ..." } else { '' }
         $lines = foreach ($it in $items) {
@@ -871,6 +992,8 @@ function Start-Capture {
         }
         $msg = @"
 Capture $($items.Count) selected item(s) as '$name' ($($tn.Kind))?
+
+$($spaceCheck.Note)
 
 Source (full path) : $srcRootFull
 Destination folder : $destPath
@@ -1116,6 +1239,23 @@ CANCEL
   of a second and deletes the temp files. Any archives already copied stay on
   the share, and a "FAILED TRANSFER" log listing them (with hashes and times)
   is written and sent to the destination.
+
+DESTINATION FREE SPACE
+  Before starting, the tool estimates the source size and the compressed size
+  at your current settings, and checks that against the free space actually
+  available at the destination. If it looks tight, you'll be offered a
+  suggested format/level expected to fit - Apply & Continue, Continue Anyway,
+  or Cancel. (Auto-transfer skips the dialog and just logs a warning, since it
+  must never prompt.) This is a planning ESTIMATE, not a guarantee - already-
+  compressed data (photos/video/zips) shrinks far less than typical documents.
+
+TEMP CLEANUP
+  Once a file's transfer is CONFIRMED (copied, and hash-verified if
+  verification is on), it is deleted from the local staging area immediately.
+  When every file in the job is confirmed, the whole temp job folder is
+  removed. If anything failed or failed verification, nothing is deleted so
+  you can review it. Turn this off in Options ("Delete temp/staged files once
+  confirmed transferred") to always keep the local copies.
 
 AUTO-TRANSFER
   Tick "Auto-transfer when a USB drive is plugged in". Then, as soon as a drive
