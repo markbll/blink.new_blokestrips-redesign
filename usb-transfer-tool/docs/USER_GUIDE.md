@@ -192,6 +192,15 @@ CMS-A12345_MANIFEST.csv           (machine-readable hashes, all items)
 Manifest header records: case number, source path, UTC timestamp, machine,
 operator, file count and algorithms — a lightweight chain-of-custody record.
 
+**Split works for both `zip` and `7z`.** 7-Zip's own volume switch only splits
+its native `.7z` format — it silently ignores splitting for `.zip`. This tool
+works around that: for `zip`, it builds the whole archive first and then
+splits it itself into `.001`/`.002`/… parts (the same raw byte layout 7-Zip's
+own volumes use), so a `zip` job with a split size set actually produces
+volumes instead of one large file. Reassemble either format's volumes by
+opening the `.001` in 7-Zip, or — without 7-Zip — concatenate the parts in
+order: `copy /b file.zip.001+file.zip.002 file.zip`.
+
 ---
 
 ## 5. Settings reference

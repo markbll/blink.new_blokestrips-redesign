@@ -1298,7 +1298,9 @@ WHAT HAPPENS
   - Everything selected is compressed with 7-Zip into ONE archive; the
     manifest is embedded.
   - Large archives are split into volumes ($([int]$config.VolumeSizeMB) MB each by default) so no
-    single file is unwieldy. Set the size to 0 for one file.
+    single file is unwieldy. Set the size to 0 for one file. Splitting works for
+    both zip and 7z (7-Zip itself only splits .7z, so for zip this tool splits
+    the finished archive itself into the same .001/.002/... parts).
   - Once compression finishes, the archive (or its volumes) is transferred to
     the destination.
   - Optionally the transferred archive is re-hashed at the destination to verify.

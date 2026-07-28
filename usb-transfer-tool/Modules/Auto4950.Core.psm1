@@ -351,11 +351,18 @@ function New-A4950Archive {
     # Build 7z argument list.  'a' = add, -mx = level, -t = type.
     # Multiple -SourcePath entries are added to the SAME archive in one pass,
     # so several selected folders/files end up combined into a single zip.
+    #
+    # NOTE: 7-Zip's -v (volumes) switch only splits the native 7z container -
+    # it silently does NOT split zip archives (7z.exe just writes one whole
+    # .zip and ignores -v). So for zip we build the complete archive here and
+    # split it ourselves afterwards (see Split-A4950File below); for 7z we let
+    # 7-Zip's own -v do it natively as before.
+    $splitZipOurselves = ($Format -eq 'zip' -and $VolumeSizeMB -gt 0)
     $szArgs = [System.Collections.Generic.List[string]]::new()
     $szArgs.AddRange([string[]]@('a', "-t$Format", "-mx=$Level", '-y', $ArchivePath))
     foreach ($sp in $SourcePath) { $szArgs.Add($sp) }
     if ($Format -eq '7z') { $szArgs.Add('-mmt=on') }          # multi-threaded
-    if ($VolumeSizeMB -gt 0) { $szArgs.Add("-v${VolumeSizeMB}m") }   # split into volumes
+    if ($VolumeSizeMB -gt 0 -and -not $splitZipOurselves) { $szArgs.Add("-v${VolumeSizeMB}m") }   # 7z native volumes
     if ($ExtraFiles)      { foreach ($ef in $ExtraFiles) { $szArgs.Add($ef) } }
     if ($Password) {
         $szArgs.Add("-p$Password")
@@ -387,8 +394,29 @@ function New-A4950Archive {
         return $result
     }
 
+    if ($splitZipOurselves) {
+        # zip: 7-Zip wrote one complete file at $ArchivePath - split it ourselves
+        # into .001/.002/... parts of the requested size, then remove the whole
+        # file so only the parts remain (matching 7-Zip's own -v behaviour).
+        if (Test-Path -LiteralPath $ArchivePath) {
+            $split = Split-A4950File -Path $ArchivePath -ChunkBytes ([int64]$VolumeSizeMB * 1MB) -CancelCheck $CancelCheck
+            if ($split.Cancelled) {
+                $result.Cancelled = $true
+                Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+                Get-ChildItem -LiteralPath $archiveDir -Filter "$archiveLeaf.*" -ErrorAction SilentlyContinue |
+                    Remove-Item -Force -ErrorAction SilentlyContinue
+                return $result
+            }
+            if ($split.Success -and $split.Parts.Count -gt 0) {
+                Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+                $result.Files = @($split.Parts)
+            } else {
+                $result.Files = @($ArchivePath)   # splitting failed - fall back to the whole file
+            }
+        }
+    }
     # Determine the produced file(s). With -v, 7-Zip writes <archive>.001, .002, ...
-    if ($VolumeSizeMB -gt 0) {
+    elseif ($VolumeSizeMB -gt 0) {
         $vols = Get-ChildItem -LiteralPath $archiveDir -Filter "$archiveLeaf.*" -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -match '\.\d{3}$' } | Sort-Object Name
         if ($vols) { $result.Files = @($vols.FullName) }
@@ -400,6 +428,61 @@ function New-A4950Archive {
     # 7-Zip exit codes: 0 = OK, 1 = warning (still usable).
     $result.Success = ($result.ExitCode -in 0, 1) -and ($result.Files.Count -gt 0)
     return $result
+}
+
+function Split-A4950File {
+    <#
+    .SYNOPSIS Split a file into fixed-size .001, .002, ... parts (raw byte split).
+    .DESCRIPTION
+        Used for zip archives, since 7-Zip's -v volume switch does not support
+        the zip container format (it silently produces one whole file instead).
+        The parts are plain sequential byte chunks - reassemble by concatenating
+        them in order, e.g. on Windows:
+            copy /b archive.zip.001+archive.zip.002+archive.zip.003 archive.zip
+        This is the same mechanism 7-Zip's own volumes use internally, so the
+        parts are handled identically by the rest of the pipeline (transfer,
+        naming, "open the .001" instructions).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][int64]$ChunkBytes,
+        [scriptblock]$CancelCheck
+    )
+    $parts = New-Object System.Collections.Generic.List[string]
+    $bufSize = [int][Math]::Min($ChunkBytes, 4MB)
+    $buffer = New-Object byte[] $bufSize
+    $partIndex = 0
+    $cancelled = $false
+
+    $in = [System.IO.File]::OpenRead($Path)
+    try {
+        while ($in.Position -lt $in.Length) {
+            if ($CancelCheck -and (& $CancelCheck)) { $cancelled = $true; break }
+            $partIndex++
+            $partPath = "{0}.{1:D3}" -f $Path, $partIndex
+            $parts.Add($partPath)
+            $out = [System.IO.File]::OpenWrite($partPath)
+            try {
+                $remaining = $ChunkBytes
+                while ($remaining -gt 0 -and $in.Position -lt $in.Length) {
+                    if ($CancelCheck -and (& $CancelCheck)) { $cancelled = $true; break }
+                    $toRead = [int][Math]::Min($buffer.Length, $remaining)
+                    $n = $in.Read($buffer, 0, $toRead)
+                    if ($n -le 0) { break }
+                    $out.Write($buffer, 0, $n)
+                    $remaining -= $n
+                }
+            } finally { $out.Dispose() }
+            if ($cancelled) { break }
+        }
+    } finally { $in.Dispose() }
+
+    if ($cancelled) {
+        foreach ($p in $parts) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+        return [pscustomobject]@{ Success = $false; Cancelled = $true; Parts = @() }
+    }
+    return [pscustomobject]@{ Success = $true; Cancelled = $false; Parts = @($parts) }
 }
 
 #endregion

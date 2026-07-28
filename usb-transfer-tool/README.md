@@ -120,8 +120,15 @@ C:\Destination\CMS-A12345\
 ```
 
 > When **split** is off (`VolumeSizeMB = 0`) you get a single file, e.g.
-> `CMS-A12345.zip`. Reassemble volumes by opening the `.001` file in
-> 7-Zip (all parts must be in the same folder).
+> `CMS-A12345.zip`. Reassemble volumes by opening the `.001` file in 7-Zip (all
+> parts must be in the same folder) — or, without 7-Zip, concatenate the parts
+> in order: `copy /b CMS-A12345.zip.001+CMS-A12345.zip.002 CMS-A12345.zip`.
+>
+> 7-Zip's own volume switch only splits its native `.7z` format — it silently
+> ignores splitting for `.zip`. So for `zip` archives, this tool builds the
+> complete archive first and then splits it itself into `.001`/`.002`/… parts
+> (the same raw sequential-byte layout 7-Zip's own volumes use), so the split
+> size setting works for **both** archive formats.
 
 The archive embeds `CMS-A12345_MANIFEST.txt` and `.csv` listing every original
 file's size, timestamp and SHA-256 / MD5 hash, with each entry prefixed by its
