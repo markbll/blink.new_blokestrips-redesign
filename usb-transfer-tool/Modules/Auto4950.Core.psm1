@@ -111,7 +111,7 @@ function Test-A4950Config {
     $issues = New-Object System.Collections.Generic.List[string]
 
     if ([string]::IsNullOrWhiteSpace($Config.NetworkShare)) {
-        $issues.Add('Network share is not set.')
+        $issues.Add('Destination is not set.')
     }
     $sz = Resolve-SevenZip -PreferredPath $Config.SevenZipPath
     if (-not $sz) {

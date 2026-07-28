@@ -81,11 +81,17 @@ client editions) will block them. You have three options:
 
 ## Quick start
 
-```powershell
-# 1. Configure (one time)
-powershell -ExecutionPolicy Bypass -File .\Setup.ps1
+**Easiest — just double-click the batch launchers** (they run PowerShell with the
+execution policy bypassed for that one process, so nothing on the machine is
+changed):
 
-# 2. Run the tool
+- **`Setup.bat`** — first-time configuration wizard
+- **`Start-Auto4950.bat`** — start the tool
+
+Or from a PowerShell prompt:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Setup.ps1
 powershell -ExecutionPolicy Bypass -File .\Start-Auto4950.ps1
 ```
 
@@ -124,6 +130,8 @@ original file's size, timestamp and SHA-256 / MD5 hashes.
 
 | File | Purpose |
 |---|---|
+| `Start-Auto4950.bat` | **Double-click launcher** for the tool (bypasses execution policy) |
+| `Setup.bat` | Double-click launcher for the Setup wizard |
 | `Start-Auto4950.ps1` | Main GUI application (**Auto 49/50**) |
 | `Setup.ps1` | First-run / reconfiguration wizard |
 | `Modules/Auto4950.Core.psm1` | Config, 7-Zip, hashing, transfer, stats (UI-free) |

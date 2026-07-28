@@ -180,6 +180,7 @@ $script:WorkerHandle = $null
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
@@ -211,18 +212,25 @@ $script:WorkerHandle = $null
                     Content="Auto-transfer when a USB drive is plugged in (needs CMS case, OP name or pass no.)"/>
 
           <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,8,0,4">
-            <TextBlock Text="Drive:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <ComboBox x:Name="CmbDrive" Width="100" Foreground="#FF202020" VerticalAlignment="Center"/>
-            <Button x:Name="BtnDriveRefresh" Content="Refresh"/>
-            <Button x:Name="BtnSelectAll" Content="Select All"/>
-            <Button x:Name="BtnSelectNone" Content="Deselect All"/>
+            <TextBlock Text="Source drive:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <ComboBox x:Name="CmbDrive" Width="120" Foreground="#FF202020" VerticalAlignment="Center"/>
+            <Button x:Name="BtnDriveRefresh" Content="Refresh Drives"/>
           </StackPanel>
 
-          <Border Grid.Row="5" Background="#FF20202A" CornerRadius="6" Margin="0,4">
+          <Grid Grid.Row="5" Margin="0,2,0,2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Selection:" FontWeight="Bold" Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="BtnSelectAll"  Content="Select All"/>
+              <Button x:Name="BtnSelectNone" Content="Deselect All"/>
+            </StackPanel>
+          </Grid>
+
+          <Border Grid.Row="6" Background="#FF20202A" CornerRadius="6" Margin="0,4">
             <TreeView x:Name="TreeItems" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"/>
           </Border>
 
-          <TextBlock Grid.Row="6" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+          <TextBlock Grid.Row="7" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
         </Grid>
       </Border>
 
@@ -237,7 +245,7 @@ $script:WorkerHandle = $null
           <TextBlock Grid.Row="0" Text="OPTIONS" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,0,6"/>
           <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
             <StackPanel>
-              <TextBlock Text="Network share / destination (UNC or folder)"/>
+              <TextBlock Text="Destination (UNC share or local folder)"/>
               <DockPanel>
                 <Button x:Name="BtnBrowseNet" Content="Browse..." DockPanel.Dock="Right" Margin="6,2,0,8" Foreground="#FF202020"/>
                 <TextBox x:Name="OptNet"/>
@@ -1157,7 +1165,7 @@ $ctrl.BtnCancel.Add_Click({ Stop-Capture })
 $ctrl.BtnSelectAll.Add_Click({ Set-AllChecks $true })
 $ctrl.BtnSelectNone.Add_Click({ Set-AllChecks $false })
 $ctrl.BtnSaveOptions.Add_Click({ Save-Options })
-$ctrl.BtnBrowseNet.Add_Click({ $p = Select-Folder 'Select the destination / network share folder' $ctrl.OptNet.Text; if ($p) { $ctrl.OptNet.Text = $p } })
+$ctrl.BtnBrowseNet.Add_Click({ $p = Select-Folder 'Select the destination folder (UNC share or local path)' $ctrl.OptNet.Text; if ($p) { $ctrl.OptNet.Text = $p } })
 $ctrl.BtnBrowseStage.Add_Click({ $p = Select-Folder 'Select the local staging folder' ([Environment]::ExpandEnvironmentVariables($ctrl.OptStage.Text)); if ($p) { $ctrl.OptStage.Text = $p } })
 $ctrl.BtnBrowse7z.Add_Click({ $p = Select-SevenZipFile; if ($p) { $ctrl.Opt7z.Text = $p } })
 $ctrl.OptLevel.Add_ValueChanged({ $ctrl.OptLevelLbl.Text = "Compression level: $([int]$ctrl.OptLevel.Value)" })
