@@ -211,22 +211,31 @@ function Invoke-A4950TransferJob {
                 $splitNote = if ($volMB -gt 0) { " split @ ${volMB} MB" } else { '' }
                 Write-A4950WorkerLog $Shared "Compressing: $($existingItems.Count) item(s) -> $(Split-Path -Leaf $archivePath) (level $($cfg.CompressionLevel)$splitNote)" 'STEP'
                 Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=-1; Name=$caseSafe }
+                # -OnPartReady enqueues each produced file for transfer the moment it is
+                # complete. For a zip split into volumes, we write/close .001, .002, ...
+                # strictly in that order ourselves, so .001 is safe to start transferring
+                # immediately - well before the later volumes are even created (this is
+                # the "start transfer as soon as the first part is done" optimisation).
+                # For 7z's own -v volumes, completion order inside the running process
+                # isn't observable from outside it (7-Zip can finish volumes out of
+                # numeric order internally), so all of those are only reported here as
+                # one batch, right after 7z.exe has fully exited - never transferred early.
                 $a = New-A4950Archive -SevenZipPath $sevenZip -SourcePath $existingItems -ArchivePath $archivePath `
                         -Level $cfg.CompressionLevel -Format $cfg.ArchiveFormat -VolumeSizeMB $volMB -Password $cfg.Password `
-                        -ExcludePatterns $cfg.ExcludePatterns -ExtraFiles $extraFiles -CancelCheck $cancel
+                        -ExcludePatterns $cfg.ExcludePatterns -ExtraFiles $extraFiles -CancelCheck $cancel `
+                        -OnPartReady ({
+                            param($p)
+                            $transferQueue.Enqueue($p)
+                            Write-A4950WorkerLog $Shared "Queued for transfer: $(Split-Path -Leaf $p)" 'INFO'
+                        }.GetNewClosure())
 
                 if ($a.Cancelled) {
                     Write-A4950WorkerLog $Shared "Compression cancelled: $caseSafe" 'WARN'
                 } else {
                     Send-A4950Event -Shared $Shared -Type 'progress' -Data @{ Stage='compress'; Percent=100; Name=$caseSafe }
                     if ($a.Success) {
-                        $parts = @($a.Files)
-                        $desc = if ($parts.Count -gt 1) { "$($parts.Count) volume(s)" } else { Split-Path -Leaf $parts[0] }
+                        $desc = if ($a.Files.Count -gt 1) { "$($a.Files.Count) volume(s)" } else { Split-Path -Leaf $a.Files[0] }
                         Write-A4950WorkerLog $Shared "Compressed : $($existingItems.Count) item(s) -> $desc" 'OK'
-                        foreach ($p in $parts) {
-                            $transferQueue.Enqueue($p)
-                            Write-A4950WorkerLog $Shared "Queued for transfer: $(Split-Path -Leaf $p)" 'INFO'
-                        }
                     } else {
                         Write-A4950WorkerLog $Shared "COMPRESS FAIL: $caseSafe (exit $($a.ExitCode))" 'ERROR'
                     }

@@ -201,6 +201,18 @@ volumes instead of one large file. Reassemble either format's volumes by
 opening the `.001` in 7-Zip, or — without 7-Zip — concatenate the parts in
 order: `copy /b file.zip.001+file.zip.002 file.zip`.
 
+**Volumes transfer as soon as each one is ready (zip only).** For `zip`, the
+tool writes `.001`, `.002`, … strictly in order — `.001` is completely closed
+before `.002` is even started — so each volume's completion is known exactly,
+and `.001` starts uploading immediately while later volumes are still being
+written. `7z`'s own `-v` volumes don't get this treatment: 7-Zip is a separate
+process, and it does **not** necessarily finish writing its volumes in
+ascending numeric order internally (the first volume file can, in some cases,
+be the *last* one it actually finishes) — so for `7z`, all volumes are only
+picked up for transfer together, once the whole 7-Zip process has exited and
+every volume is confirmed complete. This avoids any risk of transferring a
+volume that looks present on disk but isn't actually finished yet.
+
 ---
 
 ## 5. Settings reference

@@ -1301,8 +1301,11 @@ WHAT HAPPENS
     single file is unwieldy. Set the size to 0 for one file. Splitting works for
     both zip and 7z (7-Zip itself only splits .7z, so for zip this tool splits
     the finished archive itself into the same .001/.002/... parts).
-  - Once compression finishes, the archive (or its volumes) is transferred to
-    the destination.
+  - For a split zip, each volume starts transferring the instant it's fully
+    written (.001 is closed before .002 is even started) - no waiting for the
+    rest. 7z's own volumes transfer together as one batch once the whole
+    7-Zip process has exited, since it can finish its volumes out of numeric
+    order internally and there's no safe way to tell from outside.
   - Optionally the transferred archive is re-hashed at the destination to verify.
 
 NAMING

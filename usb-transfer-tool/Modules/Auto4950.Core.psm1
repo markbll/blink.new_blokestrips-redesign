@@ -335,6 +335,7 @@ function New-A4950Archive {
         [string[]]$ExcludePatterns,
         [string[]]$ExtraFiles,          # Additional files to add (e.g. the manifest)
         [scriptblock]$CancelCheck,      # Return $true to abort (kills 7-Zip)
+        [scriptblock]$OnPartReady,      # Called with a produced file's path as soon as it is complete
         [scriptblock]$OnOutput
     )
 
@@ -398,8 +399,13 @@ function New-A4950Archive {
         # zip: 7-Zip wrote one complete file at $ArchivePath - split it ourselves
         # into .001/.002/... parts of the requested size, then remove the whole
         # file so only the parts remain (matching 7-Zip's own -v behaviour).
+        # We read/write strictly in order (.001 fully closed before .002 starts),
+        # so -OnPartReady fires per part in true completion order, letting the
+        # caller start transferring .001 immediately rather than waiting for
+        # the whole split to finish.
         if (Test-Path -LiteralPath $ArchivePath) {
-            $split = Split-A4950File -Path $ArchivePath -ChunkBytes ([int64]$VolumeSizeMB * 1MB) -CancelCheck $CancelCheck
+            $split = Split-A4950File -Path $ArchivePath -ChunkBytes ([int64]$VolumeSizeMB * 1MB) `
+                        -CancelCheck $CancelCheck -OnPartReady $OnPartReady
             if ($split.Cancelled) {
                 $result.Cancelled = $true
                 Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
@@ -412,17 +418,29 @@ function New-A4950Archive {
                 $result.Files = @($split.Parts)
             } else {
                 $result.Files = @($ArchivePath)   # splitting failed - fall back to the whole file
+                if ($OnPartReady) { & $OnPartReady $ArchivePath }
             }
         }
     }
-    # Determine the produced file(s). With -v, 7-Zip writes <archive>.001, .002, ...
-    elseif ($VolumeSizeMB -gt 0) {
-        $vols = Get-ChildItem -LiteralPath $archiveDir -Filter "$archiveLeaf.*" -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match '\.\d{3}$' } | Sort-Object Name
-        if ($vols) { $result.Files = @($vols.FullName) }
-        elseif (Test-Path -LiteralPath $ArchivePath) { $result.Files = @($ArchivePath) }  # not actually split
-    } else {
-        if (Test-Path -LiteralPath $ArchivePath) { $result.Files = @($ArchivePath) }
+    else {
+        # 7z's own -v volumes (or an unsplit archive of either format) are only
+        # known to exist, and only guaranteed complete, once 7z.exe has fully
+        # exited - the process is a black box while running, and 7-Zip does not
+        # necessarily finalise volumes in ascending numeric order internally
+        # (e.g. the FIRST volume can be the LAST one it finishes writing), so
+        # there is no safe way to start transferring any of its volumes early.
+        # All produced files are reported via -OnPartReady together, in one
+        # batch, only after the process has completed.
+        if ($VolumeSizeMB -gt 0) {
+            # With -v, 7-Zip writes <archive>.001, .002, ...
+            $vols = Get-ChildItem -LiteralPath $archiveDir -Filter "$archiveLeaf.*" -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '\.\d{3}$' } | Sort-Object Name
+            if ($vols) { $result.Files = @($vols.FullName) }
+            elseif (Test-Path -LiteralPath $ArchivePath) { $result.Files = @($ArchivePath) }  # not actually split
+        } else {
+            if (Test-Path -LiteralPath $ArchivePath) { $result.Files = @($ArchivePath) }
+        }
+        if ($OnPartReady) { foreach ($f in $result.Files) { & $OnPartReady $f } }
     }
 
     # 7-Zip exit codes: 0 = OK, 1 = warning (still usable).
@@ -442,12 +460,21 @@ function Split-A4950File {
         This is the same mechanism 7-Zip's own volumes use internally, so the
         parts are handled identically by the rest of the pipeline (transfer,
         naming, "open the .001" instructions).
+
+        We read and write strictly in order - .001 is opened, fully written and
+        CLOSED before .002 is even created - so each part's completion is known
+        exactly and in true numeric order. -OnPartReady is invoked with a part's
+        full path immediately after it is closed (fully flushed to disk), so a
+        caller can start transferring it right away instead of waiting for the
+        whole file to be split. It is never called for a part that was still
+        being written when cancellation happened.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][int64]$ChunkBytes,
-        [scriptblock]$CancelCheck
+        [scriptblock]$CancelCheck,
+        [scriptblock]$OnPartReady
     )
     $parts = New-Object System.Collections.Generic.List[string]
     $bufSize = [int][Math]::Min($ChunkBytes, 4MB)
@@ -461,7 +488,7 @@ function Split-A4950File {
             if ($CancelCheck -and (& $CancelCheck)) { $cancelled = $true; break }
             $partIndex++
             $partPath = "{0}.{1:D3}" -f $Path, $partIndex
-            $parts.Add($partPath)
+            $partOk = $false
             $out = [System.IO.File]::OpenWrite($partPath)
             try {
                 $remaining = $ChunkBytes
@@ -473,8 +500,16 @@ function Split-A4950File {
                     $out.Write($buffer, 0, $n)
                     $remaining -= $n
                 }
-            } finally { $out.Dispose() }
-            if ($cancelled) { break }
+                if (-not $cancelled) { $partOk = $true }
+            } finally { $out.Dispose() }   # fully flushed and closed at this point
+            if ($cancelled) {
+                Remove-Item -LiteralPath $partPath -Force -ErrorAction SilentlyContinue
+                break
+            }
+            if ($partOk) {
+                $parts.Add($partPath)
+                if ($OnPartReady) { & $OnPartReady $partPath }   # safe: this part is complete and closed
+            }
         }
     } finally { $in.Dispose() }
 
