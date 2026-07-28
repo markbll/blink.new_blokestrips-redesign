@@ -14,6 +14,6 @@
   "DefaultSelectAll": true,
   "VerifyAfterTransfer": true,
   "DeleteLocalArchive": true,
-  "StagingFolder": "$env:TEMP\\Auto4950",
+  "StagingFolder": "%TEMP%\\Auto4950",
   "ExcludePatterns": ["System Volume Information", "$RECYCLE.BIN", "Thumbs.db"]
 }

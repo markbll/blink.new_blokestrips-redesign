@@ -1019,7 +1019,7 @@ $integrity
     $script:Shared.Items      = @($items)
     $script:Shared.Cancel     = $false
     $script:Shared.Running    = $true
-    $script:Shared.LogFile    = Join-Path ([Environment]::ExpandEnvironmentVariables($config.StagingFolder)) "$caseSafe\$caseSafe.log"
+    $script:Shared.LogFile    = Join-Path (Expand-A4950Path $config.StagingFolder) "$caseSafe\$caseSafe.log"
 
     # Launch worker runspace.
     $script:WorkerRs = [runspacefactory]::CreateRunspace()
@@ -1074,7 +1074,7 @@ function Complete-Capture {
 $statsTimer = New-Object System.Windows.Threading.DispatcherTimer
 $statsTimer.Interval = [TimeSpan]::FromMilliseconds(1500)
 $statsTimer.Add_Tick({
-    $stagePath = [Environment]::ExpandEnvironmentVariables($config.StagingFolder)
+    $stagePath = Expand-A4950Path $config.StagingFolder
     $tempQualifier = try { Split-Path -Qualifier $stagePath } catch { $env:SystemDrive }
     if (-not $tempQualifier) { $tempQualifier = $env:SystemDrive }
     $s = Get-A4950SystemStats -TempPath "$tempQualifier\" -Previous $script:PrevStats
@@ -1306,7 +1306,7 @@ $ctrl.BtnSelectAll.Add_Click({ Set-AllChecks $true })
 $ctrl.BtnSelectNone.Add_Click({ Set-AllChecks $false })
 $ctrl.BtnSaveOptions.Add_Click({ Save-Options })
 $ctrl.BtnBrowseNet.Add_Click({ $p = Select-Folder 'Select the destination folder (UNC share or local path)' $ctrl.OptNet.Text; if ($p) { $ctrl.OptNet.Text = $p } })
-$ctrl.BtnBrowseStage.Add_Click({ $p = Select-Folder 'Select the local staging folder' ([Environment]::ExpandEnvironmentVariables($ctrl.OptStage.Text)); if ($p) { $ctrl.OptStage.Text = $p } })
+$ctrl.BtnBrowseStage.Add_Click({ $p = Select-Folder 'Select the local staging folder' (Expand-A4950Path $ctrl.OptStage.Text); if ($p) { $ctrl.OptStage.Text = $p } })
 $ctrl.BtnBrowse7z.Add_Click({ $p = Select-SevenZipFile; if ($p) { $ctrl.Opt7z.Text = $p } })
 $ctrl.OptLevel.Add_ValueChanged({ $ctrl.OptLevelLbl.Text = "Compression level: $([int]$ctrl.OptLevel.Value)" })
 $ctrl.OptFormat.Add_SelectionChanged({ if ($ctrl.OptFormat.SelectedItem) { $config.ArchiveFormat = $ctrl.OptFormat.SelectedItem.Content; Update-NamePreview } })

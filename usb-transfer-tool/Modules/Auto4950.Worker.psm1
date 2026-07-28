@@ -60,7 +60,7 @@ function Invoke-A4950TransferJob {
     $caseSafe   = New-A4950CaseFolderName -CaseNumber $case
     $items      = @($Shared.Items)
     $sevenZip   = Resolve-SevenZip -PreferredPath $cfg.SevenZipPath
-    $staging    = Join-Path ([Environment]::ExpandEnvironmentVariables($cfg.StagingFolder)) $caseSafe
+    $staging    = Join-Path (Expand-A4950Path $cfg.StagingFolder) $caseSafe
     $destFolder = Join-Path $cfg.NetworkShare $caseSafe
 
     # Cancel probe reused by 7-Zip and robocopy so both can be killed instantly.

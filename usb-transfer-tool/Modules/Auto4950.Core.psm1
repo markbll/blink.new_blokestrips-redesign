@@ -48,10 +48,35 @@ function Get-DefaultConfig {
         DefaultSelectAll    = $true                    # Pre-select all folders/files by default
         VerifyAfterTransfer = $true                    # Re-hash the archive at destination
         DeleteLocalArchive  = $true                    # Remove staged/temp files once confirmed transferred
-        StagingFolder       = '$env:TEMP\Auto4950'  # Where archives are staged before transfer
+        StagingFolder       = '%TEMP%\Auto4950'        # Where archives are staged before transfer
         # --- Excludes ----------------------------------------------------------
         ExcludePatterns     = @('System Volume Information', '$RECYCLE.BIN', 'Thumbs.db')
     }
+}
+
+function Expand-A4950Path {
+    <#
+    .SYNOPSIS Expand environment-variable references in a path string.
+    .DESCRIPTION
+        Understands both Windows '%VAR%' syntax and PowerShell's '$env:VAR'
+        syntax. The latter is expanded automatically ONLY when it appears
+        inside a double-quoted string literal in PowerShell source code - a
+        value loaded from JSON is just data, so a saved "$env:TEMP\x" stays
+        completely literal. Passed as-is to a path/provider cmdlet, PowerShell
+        then tries to resolve a PSDrive literally named "$env" and fails with
+        "Cannot find drive. A drive with the name '$env' does not exist."
+        This expands both forms so a saved config value is safe either way.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $Path }
+    $result = $Path
+    $opts = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    foreach ($m in [regex]::Matches($Path, '\$env:([A-Za-z_][A-Za-z0-9_]*)', $opts)) {
+        $val = [Environment]::GetEnvironmentVariable($m.Groups[1].Value)
+        if ($null -ne $val) { $result = $result.Replace($m.Value, $val) }
+    }
+    return [Environment]::ExpandEnvironmentVariables($result)
 }
 
 function Get-ConfigPath {
@@ -82,8 +107,9 @@ function Import-A4950Config {
             Write-Warning "Failed to parse '$Path': $($_.Exception.Message). Using defaults."
         }
     }
-    # Expand environment variables inside path-like values.
-    $config['StagingFolder'] = [Environment]::ExpandEnvironmentVariables($config['StagingFolder'])
+    # Expand environment variables inside path-like values (repairs any
+    # previously-saved '$env:...' literal too - see Expand-A4950Path).
+    $config['StagingFolder'] = Expand-A4950Path $config['StagingFolder']
     return $config
 }
 
