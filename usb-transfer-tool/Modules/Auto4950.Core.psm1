@@ -28,7 +28,7 @@ function Get-DefaultConfig {
     param()
     [ordered]@{
         # --- Destination -------------------------------------------------------
-        NetworkShare        = '\\SERVER\Evidence$'   # UNC path files are transferred to
+        NetworkShare        = 'C:\Destination'         # UNC share or local folder files are transferred to
         # --- Tooling -----------------------------------------------------------
         SevenZipPath        = ''                       # Auto-detected if blank
         # --- Case / naming -----------------------------------------------------
@@ -36,7 +36,6 @@ function Get-DefaultConfig {
         # --- Compression -------------------------------------------------------
         CompressionLevel    = 5                        # 0 (store) .. 9 (ultra)
         ArchiveFormat       = 'zip'                     # zip | 7z
-        SplitPerTopLevel    = $true                    # $true (default) = one archive per top-level item, transferred as each finishes (fastest pipelining). $false = combine everything selected into ONE archive.
         VolumeSizeMB        = 2048                      # Split archives into volumes of this size (MB). 0 = no split
         Password            = ''                       # Optional AES-256 archive password (blank = none)
         # --- Hashing -----------------------------------------------------------
@@ -48,7 +47,7 @@ function Get-DefaultConfig {
         DefaultSelectAll    = $true                    # Pre-select all folders/files by default
         VerifyAfterTransfer = $true                    # Re-hash the archive at destination
         DeleteLocalArchive  = $true                    # Remove staged/temp files once confirmed transferred
-        StagingFolder       = '%TEMP%\Auto4950'        # Where archives are staged before transfer
+        StagingFolder       = 'C:\temp'                # Where archives are staged before transfer
         # --- Excludes ----------------------------------------------------------
         ExcludePatterns     = @('System Volume Information', '$RECYCLE.BIN', 'Thumbs.db')
     }

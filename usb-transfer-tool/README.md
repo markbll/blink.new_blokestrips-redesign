@@ -1,10 +1,9 @@
 # Auto 49/50 — USB Compression & Transfer Tool
 
 A Windows PowerShell + WPF application that watches for USB drives, hashes their
-contents for chain-of-custody, compresses everything with **7-Zip**, and
-transfers the archives to a network share — all tagged with a **CMS case
-number**. Compression and transfer run as a **pipeline**, so the first archive
-starts uploading while the next is still compressing.
+contents for chain-of-custody, compresses everything with **7-Zip** into a
+single combined archive, and transfers it to a destination — all tagged with a
+**CMS case number**, OP name and/or pass number.
 
 > Designed for evidence/collection style workflows where integrity (SHA-256 /
 > MD5) and a clear audit trail matter.
@@ -29,9 +28,9 @@ starts uploading while the next is still compressing.
 | Compress with 7-Zip | `7z.exe`, level 0–9, `zip` (default) or `7z`, optional AES-256 password |
 | Split into multiple files | Split-size **dropdown** (presets or custom MB; default **2 GB**); `0` = single file |
 | SHA-256 + MD5 of originals | Per-file manifest (`.txt` + `.csv`), **embedded in the archive** |
-| Transfer to a network share | UNC path from config; robocopy with Copy-Item fallback |
-| Start transfer early (speed) | Producer/consumer pipeline: transfer begins as soon as the first archive/volume is written |
-| Combine into one archive | Optional toggle: pack every selected folder/file into a SINGLE zip/7z instead of one archive per top-level item |
+| Transfer to a destination | UNC share or local folder; robocopy with Copy-Item fallback |
+| Combined single archive | All selected folders/files are always packed into ONE archive (not configurable) — one manifest covers everything, entries prefixed by each item's own top-level folder name |
+| Transfer starts as soon as it's ready | The combined archive (or its volumes) begins transferring the moment 7-Zip finishes writing it |
 | Live transfer status | Per-file transfer status + running count on screen |
 | Instant cancel + cleanup | Cancel kills 7-Zip/robocopy in ~150 ms and deletes temp files |
 | Temp cleanup on success | Each file is removed from staging once its transfer is **confirmed** (copied, and hash-verified if verification is on); the whole temp job folder is swept at the end once *everything* is confirmed. Nothing is deleted if a file failed or failed verification |
@@ -40,6 +39,7 @@ starts uploading while the next is still compressing.
 | Full-screen GUI | The window opens maximised |
 | Real-time events/log | Colour-coded activity log (auto-scrolls) with hashes, file names, dates/times; per-case `.log` file |
 | Post-transfer verification | Re-hash the archive at the destination (SHA-256 match) |
+| Notification sounds | An audible chime on a clean finish, and an alert sound on any error — Windows system sounds, respecting your OS volume/mute |
 
 ---
 
@@ -110,22 +110,22 @@ Or right-click either `.ps1` and choose **Run with PowerShell**.
 All options — including **sizing/volume split** — live in the **Options** panel on
 the main screen; **Save Options** persists them.
 
-Output on the share (default: `zip` format, split into 2 GB volumes):
+Output at the destination (default: `zip` format, split into 2 GB volumes;
+everything selected is always combined into ONE archive):
 
 ```
-\\SERVER\Evidence$\CMS-A12345\
-    CMS-A12345__Photos.zip.001      (volume 1 – incl. embedded manifest)
-    CMS-A12345__Photos.zip.002      (volume 2)
-    CMS-A12345__Documents.zip.001
-    CMS-A12345__report.pdf.zip.001
+C:\Destination\CMS-A12345\
+    CMS-A12345.zip.001      (volume 1 – incl. embedded manifest covering everything selected)
+    CMS-A12345.zip.002      (volume 2)
 ```
 
-> When **split** is off (`VolumeSizeMB = 0`) you get single files, e.g.
-> `CMS-A12345__Photos.zip`. Reassemble volumes by opening the `.001` file in
+> When **split** is off (`VolumeSizeMB = 0`) you get a single file, e.g.
+> `CMS-A12345.zip`. Reassemble volumes by opening the `.001` file in
 > 7-Zip (all parts must be in the same folder).
 
-Each archive embeds `CMS-A12345__<item>_MANIFEST.txt` and `.csv` listing every
-original file's size, timestamp and SHA-256 / MD5 hashes.
+The archive embeds `CMS-A12345_MANIFEST.txt` and `.csv` listing every original
+file's size, timestamp and SHA-256 / MD5 hash, with each entry prefixed by its
+original top-level folder name (e.g. `Photos\IMG001.jpg`).
 
 ---
 
@@ -149,22 +149,18 @@ original file's size, timestamp and SHA-256 / MD5 hashes.
 
 See `config.example.json`. Key settings:
 
-- **NetworkShare** — UNC destination, e.g. `\\SERVER\Evidence$`.
+- **NetworkShare** — destination (UNC share or local folder), default `C:\Destination`.
 - **SevenZipPath** — leave blank to auto-detect.
 - **ArchiveFormat** — `zip` (default, portable) or `7z` (smaller, AES-256).
-- **SplitPerTopLevel** — `true` (default): one archive **per top-level
-  selection**, transferred as each finishes compressing (fastest). Set to
-  `false` (or tick "Combine all selected folders/files into ONE archive") to
-  pack **everything selected into a single zip/7z** instead — one manifest
-  covering every item, files distinguished by their original top-level folder
-  name. Nothing transfers until that single archive finishes.
-- **VolumeSizeMB** — split archives into volumes of this size in MB
+- All selected folders/files are always combined into **one** archive — this
+  is fixed behavior, not a setting.
+- **VolumeSizeMB** — split the archive into volumes of this size in MB
   (default **2048** = 2 GB); `0` = one file. Changeable in Setup **and** Settings.
 - **CompressionLevel** — `0` (store, fastest) … `9` (ultra, smallest).
 - **HashAlgorithms** — any of `SHA256`, `MD5`.
 - **VerifyAfterTransfer** — re-hash the archive at the destination.
 - **AutoTransfer** — start automatically on USB insert (needs a CMS case or OP name).
-- **StagingFolder** — local temp area for archives before transfer.
+- **StagingFolder** — local temp area for archives before transfer, default `C:\temp`.
 - **DeleteLocalArchive** — delete each staged file once its transfer is
   **confirmed** (default **on**); the whole temp job folder is removed once every
   file in the job is confirmed. Anything not confirmed (failed copy, failed

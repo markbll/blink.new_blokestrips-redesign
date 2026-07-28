@@ -1,10 +1,9 @@
 {
-  "NetworkShare": "\\\\SERVER\\Evidence$",
+  "NetworkShare": "C:\\Destination",
   "SevenZipPath": "",
   "CasePrefix": "CMS-A",
   "CompressionLevel": 5,
   "ArchiveFormat": "zip",
-  "SplitPerTopLevel": true,
   "VolumeSizeMB": 2048,
   "Password": "",
   "HashAlgorithms": ["SHA256", "MD5"],
@@ -14,6 +13,6 @@
   "DefaultSelectAll": true,
   "VerifyAfterTransfer": true,
   "DeleteLocalArchive": true,
-  "StagingFolder": "%TEMP%\\Auto4950",
+  "StagingFolder": "C:\\temp",
   "ExcludePatterns": ["System Volume Information", "$RECYCLE.BIN", "Thumbs.db"]
 }

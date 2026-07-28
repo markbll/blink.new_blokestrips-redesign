@@ -43,7 +43,7 @@ detects this and will tell you.
 ┌ Header ─────────────────────────────────────────────────────────────────────┐
 │ Auto 49/50 + status                     [Rescan Drives] [Help]               │
 ├ System Monitor ─┬ Details + Selection ─┬ Options ───────────┬ Activity Log ──┤
-│ CPU             │ CMS Case Number      │ Network share       │ [09:31:02] ... │
+│ CPU             │ CMS Case Number      │ Destination         │ [09:31:02] ... │
 │ Memory          │ OP Name (UPPERCASE)  │ Format / Split size │ colour-coded   │
 │ Network Mbps    │ ☑ Auto-transfer      │ Level / Hashing     │ events         │
 │ Temp free space │ Drive ▼ [Sel][Desel] │ ...all options...   │                │
@@ -68,9 +68,10 @@ detects this and will tell you.
   checkbox. **Everything is ticked by default.** Expand a folder to review its
   contents. Use **Select All** / **Deselect All**, or untick individual items —
   every selection can be de-selected.
-- Selection granularity is **top-level items** — each becomes its own archive so
-  transfers can start early. To capture a specific sub-folder only, untick the
-  parent and drill into it (or capture the whole folder).
+- Selection granularity is **top-level items** (or specific sub-folders/files
+  within them). Everything you tick is combined into **one** archive for the
+  job — to capture a specific sub-folder only, untick the parent and drill into
+  it (or capture the whole folder).
 
 ### CMS case number / OP name
 - Provide **either**:
@@ -88,21 +89,17 @@ detects this and will tell you.
   add one. All currently-selected folders/files (all by default) are captured.
 
 ### Options panel (all settings, on the main screen)
-Everything is editable on the right-hand **Options** panel — network share,
-7-Zip path, staging folder, case prefix, **archive format**, **combine into one
-archive**, **volume/split size (sizing)**, compression level, password,
-hashing, manifest embedding, verification, prompt-on-insert, select-all
-default, delete-local and exclude patterns. Changes apply immediately when you
-press **Start**; **Save Options** writes them to `config.json`. Every checkbox
-can be ticked *and* un-ticked.
+Everything is editable on the right-hand **Options** panel — destination,
+7-Zip path, staging folder, case prefix, **archive format**, **volume/split
+size (sizing)**, compression level, password, hashing, manifest embedding,
+verification, prompt-on-insert, select-all default, delete-local and exclude
+patterns. Changes apply immediately when you press **Start**; **Save Options**
+writes them to `config.json`. Every checkbox can be ticked *and* un-ticked.
 
-**Combine all selected folders/files into ONE archive** — by default (off),
-each top-level folder/file you tick becomes its **own** archive, which starts
-transferring the moment it's ready while the next one compresses (fastest
-overall). Tick this to instead pack **everything you've selected into a single
-zip/7z** — one shared manifest lists every file, prefixed with its original
-top-level folder name so nothing collides. Because there's only one archive,
-nothing transfers until that single compression pass finishes.
+**Combined archive** — every folder/file you select is always packed into a
+**single** archive (this is fixed behavior, not a setting): one shared
+manifest lists every file, prefixed with its original top-level folder name so
+nothing collides. Nothing transfers until that one compression pass finishes.
 
 ---
 
@@ -133,15 +130,17 @@ Continue**, **Continue Anyway**, or **Cancel**. This is a **planning estimate
 only**: already-compressed data (photos, video, zip/7z files) shrinks far less
 than typical documents, so treat the suggestion as a guide, not a guarantee.
 
-### What happens internally (per top-level item)
-1. **Hash** every original file → manifest (`.txt` human-readable + `.csv`).
-2. **Compress** the item with 7-Zip, **embedding the manifest** in the archive.
-3. As soon as that archive finishes it is **queued for transfer** to the share
-   while the **next item compresses** — this is the pipeline that gives you
-   speed.
-4. **Transfer** via robocopy (retry/resume) to
-   `\\share\<CASE>\<CASE>__<item>.<fmt>`. A destination file name clash is
-   never overwritten — a date/time is appended instead.
+### What happens internally
+1. **Hash** every original file across your whole selection → one manifest
+   (`.txt` human-readable + `.csv`), each entry prefixed by its top-level
+   folder name.
+2. **Compress** everything together with 7-Zip into ONE archive, **embedding
+   the manifest**.
+3. As soon as that archive (or its volumes) finishes writing, it is **queued
+   for transfer** to the destination.
+4. **Transfer** via robocopy (retry/resume) to `<dest>\<CASE>\<CASE>.<fmt>`.
+   A destination file name clash is never overwritten — a date/time is
+   appended instead.
 5. If **VerifyAfterTransfer** is on, the archive is **re-hashed at the
    destination** and compared (SHA-256).
 6. Once a file's transfer is **confirmed** (copied, and hash-verified if
@@ -165,23 +164,29 @@ fraction of a second and deletes the temp files for the job. Archives already
 confirmed on the share stay there, and a "FAILED TRANSFER" log listing them
 (names, SHA-256, sizes, times) is written and sent to the destination.
 
+### Notification sounds
+The tool plays the Windows **Critical Stop** sound the moment any error is
+logged (compress/transfer/verify failures, etc.), and the Windows
+**Asterisk** (information) sound once a job finishes with everything
+confirmed. Both use your system's default sound scheme, so they follow your
+Windows volume/mute settings automatically.
+
 ---
 
 ## 4. Output layout
 
 ```
-\\SERVER\Evidence$\
+C:\Destination\
 └─ CMS-A12345\
-   ├─ CMS-A12345__Photos.7z        ← archive (manifest embedded inside)
-   ├─ CMS-A12345__Documents.7z
-   └─ CMS-A12345__notes.txt.7z
+   └─ CMS-A12345.7z        ← one combined archive (manifest embedded inside)
 ```
 
-Inside each `.7z`:
+Inside the `.7z`:
 ```
-Photos\...                                (original files)
-CMS-A12345__Photos_MANIFEST.txt           (human-readable hashes)
-CMS-A12345__Photos_MANIFEST.csv           (machine-readable hashes)
+Photos\...                         (original files, grouped by top-level folder)
+Documents\...
+CMS-A12345_MANIFEST.txt           (human-readable hashes, all items)
+CMS-A12345_MANIFEST.csv           (machine-readable hashes, all items)
 ```
 
 Manifest header records: case number, source path, UTC timestamp, machine,
@@ -196,9 +201,9 @@ re-run `Setup.ps1`). All values persist to `config.json`.
 
 | Setting | Meaning |
 |---|---|
-| Network share | UNC destination for archives |
+| Destination | UNC share or local folder for archives; default `C:\Destination` |
 | 7-Zip path | Blank = auto-detect |
-| Staging folder | Local temp area for archives |
+| Staging folder | Local temp area for archives; default `C:\temp` |
 | Case prefix | Required prefix for case numbers (`CMS-A`) |
 | Archive format | `zip` (default, portable) or `7z` (smaller) |
 | Split into volumes (MB) | Max size per file; default **2048** (2 GB); `0` = single file |
