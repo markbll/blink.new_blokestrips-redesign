@@ -108,6 +108,7 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="280"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
@@ -192,7 +193,6 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="3*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="1.2*"/>
@@ -225,21 +225,7 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
           <CheckBox Grid.Row="3" x:Name="ChkAuto" Margin="0,8,0,0"
                     Content="Auto-transfer when a USB drive is plugged in (needs CMS case, OP name or pass no.)"/>
 
-          <!-- SOURCE section: auto-detected USB drive, plus manually-added folders/sub-folders/files -->
-          <Border Grid.Row="4" Background="#FF33334A" CornerRadius="6" Padding="8" Margin="0,10,0,4" BorderBrush="{StaticResource Accent}" BorderThickness="1">
-            <StackPanel>
-              <TextBlock Text="SOURCE" FontWeight="Bold" FontSize="14" Foreground="{StaticResource Accent}" Margin="0,0,0,6"/>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                <TextBlock Text="Drive:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                <ComboBox x:Name="CmbDrive" Width="120" Foreground="#FF202020" VerticalAlignment="Center"/>
-                <Button x:Name="BtnDriveRefresh" Content="Refresh Drives"/>
-              </StackPanel>
-              <Button x:Name="BtnSource" Content="Source..." Background="#FF7B5BD1" FontSize="14" FontWeight="Bold" Padding="12,10" HorizontalAlignment="Stretch"/>
-              <TextBlock Text="Pick folders, sub-folders and files from anywhere (separate Windows picker)." Foreground="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
-            </StackPanel>
-          </Border>
-
-          <Grid Grid.Row="5" Margin="0,2,0,2">
+          <Grid Grid.Row="4" Margin="0,8,0,2">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Selection:" FontWeight="Bold" Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
@@ -248,11 +234,11 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
             </StackPanel>
           </Grid>
 
-          <Border Grid.Row="6" Background="#FF20202A" CornerRadius="6" Margin="0,4">
+          <Border Grid.Row="5" Background="#FF20202A" CornerRadius="6" Margin="0,4">
             <TreeView x:Name="TreeItems" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"/>
           </Border>
 
-          <Grid Grid.Row="7" Margin="0,4,0,2">
+          <Grid Grid.Row="6" Margin="0,4,0,2">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Added sources:" FontWeight="Bold" Foreground="{StaticResource Accent}" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
@@ -261,12 +247,12 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
             </StackPanel>
           </Grid>
 
-          <Border Grid.Row="8" Background="#FF20202A" CornerRadius="6" Margin="0,0,0,4">
+          <Border Grid.Row="7" Background="#FF20202A" CornerRadius="6" Margin="0,0,0,4">
             <ListBox x:Name="LstManualSources" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
                      SelectionMode="Extended" FontSize="11"/>
           </Border>
 
-          <TextBlock Grid.Row="9" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+          <TextBlock Grid.Row="8" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
         </Grid>
       </Border>
 
@@ -366,8 +352,30 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
       </Border>
     </Grid>
 
+    <!-- Source: horizontal bar, full width, above the activity log -->
+    <Border Grid.Row="3" Style="{StaticResource Card}" BorderBrush="{StaticResource Accent}" BorderThickness="1">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0" Text="SOURCE" FontWeight="Bold" FontSize="16" Foreground="{StaticResource Accent}" VerticalAlignment="Center" Margin="0,0,20,0"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
+          <TextBlock Text="Drive:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+          <ComboBox x:Name="CmbDrive" Width="140" Foreground="#FF202020" VerticalAlignment="Center"/>
+          <Button x:Name="BtnDriveRefresh" Content="Refresh Drives"/>
+        </StackPanel>
+        <TextBlock Grid.Column="2" Text="Pick folders, sub-folders and files from anywhere (separate Windows picker)."
+                   Foreground="{StaticResource Muted}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"/>
+        <Button Grid.Column="3" x:Name="BtnSource" Content="Source..." Background="#FF7B5BD1" Foreground="{StaticResource Text}"
+                FontSize="22" FontWeight="Bold" Padding="36,18" Margin="8,4"/>
+      </Grid>
+    </Border>
+
     <!-- Activity log: bottom, full width, sized for >= 10 visible lines -->
-    <Border Grid.Row="3" Style="{StaticResource Card}">
+    <Border Grid.Row="4" Style="{StaticResource Card}">
       <Grid>
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/>
@@ -383,7 +391,7 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
     </Border>
 
     <!-- Footer / actions -->
-    <Border Grid.Row="4" Style="{StaticResource Card}">
+    <Border Grid.Row="5" Style="{StaticResource Card}">
       <Grid>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*"/>
@@ -1529,9 +1537,10 @@ WORKFLOW
      destination and the zip names).
 
 SOURCE BUTTON (folders, sub-folders and files from anywhere)
-  Click the "Source..." button in the SOURCE section to bring in folders or
-  files that aren't on the connected drive at all - a network path, another
-  local drive, anywhere. It opens a small chooser:
+  The large "Source..." button sits in the SOURCE bar that spans the full
+  width of the window, above the activity log. Click it to bring in folders
+  or files that aren't on the connected drive at all - a network path,
+  another local drive, anywhere. It opens a small chooser:
     - "Add Folder(s)..." opens the native Windows folder browser, and
       re-opens it after each pick so you can add several folders in a row
       (Windows has no built-in multi-select folder dialog); every

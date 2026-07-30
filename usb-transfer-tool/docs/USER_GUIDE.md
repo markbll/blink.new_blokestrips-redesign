@@ -48,10 +48,10 @@ detects this and will tell you.
 │ CMS Case Number       │ Destination         │ Destination folder activity            │
 │ OP Name (UPPERCASE)   │ Format / Split size │  [09:31:02] Created: CASE.zip.001      │
 │ ☑ Auto-transfer       │ Level / Hashing     │ Temp folder activity                   │
-│ Drive ▼ [Sel][Desel]  │ ...all options...   │  [09:30:58] Created: CASE.zip.001      │
-│ [   Source...   ]     │ [ Save Options ]    │                                         │
+│ Selection: [Sel][Desel]│ ...all options...  │  [09:30:58] Created: CASE.zip.001      │
 │ ☑ Photos  ☑ report    │                     │                                         │
-│ Added sources: (list) │                     │                                         │
+│ Added sources: (list) │ [ Save Options ]    │                                         │
+├ SOURCE ── Drive ▼ [Refresh] ──────────────────────────────────  [    Source...    ] ──┤
 ├───────────────────────┴─────────────────────┴─────────────────────────────────────────┤
 │ Real-Time Activity Log (full width, ≥10 lines) — [09:31:02] ... colour-coded events   │
 ├─────────────────────────────────────────────────────────────────────────────────────┤
@@ -97,9 +97,11 @@ Win+L lock or a lock screen enforced by Group Policy.
   it (or transfer the whole folder).
 
 ### Add source (folders, sub-folders and files from anywhere)
-- The **"Source..."** button, in the SOURCE section above the tree, opens a
-  small chooser with two options — so you can add sources that aren't on the
-  connected drive at all: a network path, another local drive, anywhere.
+- The large **"Source..."** button sits in its own **SOURCE** bar spanning the
+  full width of the window, above the activity log (the drive dropdown and
+  **Refresh Drives** live in the same bar). Clicking it opens a small chooser
+  with two options — so you can add sources that aren't on the connected
+  drive at all: a network path, another local drive, anywhere.
 - **"Add Folder(s)..."** re-opens the standard folder browser after each pick
   and asks whether to add another, so you can add several folders in one go
   (Windows has no built-in multi-select folder dialog); every sub-folder and
