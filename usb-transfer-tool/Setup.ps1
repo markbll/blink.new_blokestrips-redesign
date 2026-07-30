@@ -141,6 +141,28 @@ $configPath = Get-ConfigPath
 $w = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
 $g = { param($n) $w.FindName($n) }
 
+# Owner handle so WinForms dialogs open on top of / modal to this window
+# instead of potentially appearing behind it.
+try {
+    Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition @'
+using System;
+using System.Windows.Forms;
+namespace Auto4950 {
+    public class Win32Window : IWin32Window {
+        private IntPtr _handle;
+        public Win32Window(IntPtr handle) { _handle = handle; }
+        public IntPtr Handle { get { return _handle; } }
+    }
+}
+'@ -ErrorAction Stop
+} catch {}
+function Get-A4950WindowOwner {
+    try {
+        $hwnd = (New-Object System.Windows.Interop.WindowInteropHelper($w)).Handle
+        return New-Object Auto4950.Win32Window($hwnd)
+    } catch { return $null }
+}
+
 (& $g 'Net').Text    = $config.NetworkShare
 (& $g 'Sz').Text     = $config.SevenZipPath
 (& $g 'Temp').Text   = $config.TempFolder
@@ -194,7 +216,7 @@ foreach ($it in (& $g 'Fmt').Items) { if ($it.Content -eq $config.ArchiveFormat)
     foreach ($seed in @("$env:ProgramW6432\7-Zip", "$env:ProgramFiles\7-Zip", "${env:ProgramFiles(x86)}\7-Zip")) {
         if ($seed -and (Test-Path -LiteralPath $seed)) { $dlg.InitialDirectory = $seed; break }
     }
-    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+    if ($dlg.ShowDialog((Get-A4950WindowOwner)) -eq [System.Windows.Forms.DialogResult]::OK) {
         (& $g 'Sz').Text = $dlg.FileName
         (& $g 'SzStatus').Text = "Selected: $($dlg.FileName)"
         (& $g 'SzStatus').Foreground = '#FF66BB6A'

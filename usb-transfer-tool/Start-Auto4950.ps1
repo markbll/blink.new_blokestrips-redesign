@@ -750,7 +750,7 @@ function Select-FoldersLoop {
         $dlg.Description = 'Select a folder to add as a source (its sub-folders and files are included)'
         $dlg.ShowNewFolderButton = $false
         if ($start -and (Test-Path -LiteralPath $start)) { $dlg.SelectedPath = $start }
-        if ($dlg.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { break }
+        if ($dlg.ShowDialog((Get-A4950WindowOwner)) -ne [System.Windows.Forms.DialogResult]::OK) { break }
         $result.Add($dlg.SelectedPath)
         $start = $dlg.SelectedPath
         $again = [System.Windows.MessageBox]::Show('Add another folder?', 'Add Source', 'YesNo', 'Question')
@@ -765,7 +765,7 @@ function Select-FilesMulti {
     $dlg.Multiselect = $true
     $dlg.CheckFileExists = $true
     $dlg.Filter = 'All files (*.*)|*.*'
-    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { return @($dlg.FileNames) }
+    if ($dlg.ShowDialog((Get-A4950WindowOwner)) -eq [System.Windows.Forms.DialogResult]::OK) { return @($dlg.FileNames) }
     return @()
 }
 
@@ -844,13 +844,39 @@ function Save-Options {
 # ----------------------------------------------------------------------------
 # Windows folder/file pickers for locations
 # ----------------------------------------------------------------------------
+# WinForms dialogs shown with no owner can appear BEHIND the main WPF window
+# (especially when it's maximised), looking like nothing happened when the
+# button is clicked. Wrapping the WPF window's handle as an IWin32Window and
+# passing it to ShowDialog() forces the picker to open on top and modal to
+# the main window every time.
+try {
+    Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition @'
+using System;
+using System.Windows.Forms;
+namespace Auto4950 {
+    public class Win32Window : IWin32Window {
+        private IntPtr _handle;
+        public Win32Window(IntPtr handle) { _handle = handle; }
+        public IntPtr Handle { get { return _handle; } }
+    }
+}
+'@ -ErrorAction Stop
+} catch {}
+
+function Get-A4950WindowOwner {
+    try {
+        $hwnd = (New-Object System.Windows.Interop.WindowInteropHelper($window)).Handle
+        return New-Object Auto4950.Win32Window($hwnd)
+    } catch { return $null }
+}
+
 function Select-Folder {
     param([string]$Description, [string]$Start)
     $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
     $dlg.Description = $Description
     $dlg.ShowNewFolderButton = $true
     if ($Start -and (Test-Path -LiteralPath $Start)) { $dlg.SelectedPath = $Start }
-    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { return $dlg.SelectedPath }
+    if ($dlg.ShowDialog((Get-A4950WindowOwner)) -eq [System.Windows.Forms.DialogResult]::OK) { return $dlg.SelectedPath }
     return $null
 }
 
@@ -861,7 +887,7 @@ function Select-SevenZipFile {
     foreach ($seed in @("$env:ProgramW6432\7-Zip", "$env:ProgramFiles\7-Zip", "${env:ProgramFiles(x86)}\7-Zip")) {
         if ($seed -and (Test-Path -LiteralPath $seed)) { $dlg.InitialDirectory = $seed; break }
     }
-    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { return $dlg.FileName }
+    if ($dlg.ShowDialog((Get-A4950WindowOwner)) -eq [System.Windows.Forms.DialogResult]::OK) { return $dlg.FileName }
     return $null
 }
 
