@@ -18,6 +18,7 @@ single combined archive, and transfers it to a destination — all tagged with a
 | Prompt before acting | Yes/No dialog on insert (`AutoPromptOnInsert`), plus a final confirm |
 | Auto-transfer | Tick-box: start automatically on insert, needing only a CMS case, OP name **or** pass number |
 | Choose folders/files/drives | Checkbox tree with **selectable sub-folders/files**; Select All / **Deselect All clears every level**; drive Refresh |
+| Add source (any location) | **"Add Folder(s)..."** / **"Add Files..."** open separate native Windows pickers to bring in extra folders/files from anywhere, not just the connected drive; listed under "Added sources" and always included alongside the tree selection |
 | Confirmation detail | Confirm dialog shows the **full source path** of each item, the destination folder and the zip names |
 | Transfer popup | A "Transfer in progress" window opens on start, mirroring the live events + progress |
 | Duplicate-safe destination | Never overwrites: a clashing destination file name gets a date/time appended |

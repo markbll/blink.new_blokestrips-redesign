@@ -57,6 +57,7 @@ $script:TempActivityEvents = [System.Collections.Queue]::Synchronized([System.Co
 $script:DestWatcher  = $null
 $script:TempWatcher  = $null
 $script:SleepBlocked = $false
+$script:ManualSources = New-Object System.Collections.Generic.List[string]
 
 # ----------------------------------------------------------------------------
 # XAML - user interface definition
@@ -192,7 +193,10 @@ $script:SleepBlocked = $false
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="3*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="1.2*"/>
             <RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
 
@@ -228,7 +232,16 @@ $script:SleepBlocked = $false
             <Button x:Name="BtnDriveRefresh" Content="Refresh Drives"/>
           </StackPanel>
 
-          <Grid Grid.Row="5" Margin="0,2,0,2">
+          <Grid Grid.Row="5" Margin="0,2,0,4">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Add source:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="BtnAddFolder" Content="Add Folder(s)..." Background="#FF7B5BD1"/>
+              <Button x:Name="BtnAddFiles"  Content="Add Files..."     Background="#FF7B5BD1"/>
+            </StackPanel>
+          </Grid>
+
+          <Grid Grid.Row="6" Margin="0,2,0,2">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Selection:" FontWeight="Bold" Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
@@ -237,11 +250,25 @@ $script:SleepBlocked = $false
             </StackPanel>
           </Grid>
 
-          <Border Grid.Row="6" Background="#FF20202A" CornerRadius="6" Margin="0,4">
+          <Border Grid.Row="7" Background="#FF20202A" CornerRadius="6" Margin="0,4">
             <TreeView x:Name="TreeItems" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"/>
           </Border>
 
-          <TextBlock Grid.Row="7" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+          <Grid Grid.Row="8" Margin="0,4,0,2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Added sources (folders/files, picked separately):" FontWeight="Bold" Foreground="{StaticResource Accent}" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="BtnRemoveManualSource" Content="Remove Selected"/>
+              <Button x:Name="BtnClearManualSources"  Content="Clear Added"/>
+            </StackPanel>
+          </Grid>
+
+          <Border Grid.Row="9" Background="#FF20202A" CornerRadius="6" Margin="0,0,0,4">
+            <ListBox x:Name="LstManualSources" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
+                     SelectionMode="Extended" FontSize="11"/>
+          </Border>
+
+          <TextBlock Grid.Row="10" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
         </Grid>
       </Border>
 
@@ -679,12 +706,66 @@ function Get-CheckedItems {
     foreach ($tvi in $ctrl.TreeItems.Items) {
         if ($tvi -is [System.Windows.Controls.TreeViewItem]) { Add-CheckedFromNode $tvi $result }
     }
+    foreach ($p in $script:ManualSources) { if (-not $result.Contains($p)) { $result.Add($p) } }
     return $result
 }
 
 function Update-SelectionCount {
     $n = (Get-CheckedItems).Count
     $ctrl.LblSelCount.Text = "$n item(s) selected"
+}
+
+# ----------------------------------------------------------------------------
+# Manually-added sources (separate native Windows pickers, any drive/folder)
+# ----------------------------------------------------------------------------
+function Update-ManualSourcesList {
+    $ctrl.LstManualSources.Items.Clear()
+    foreach ($p in $script:ManualSources) { [void]$ctrl.LstManualSources.Items.Add($p) }
+}
+
+function Add-ManualSources {
+    param([string[]]$Paths)
+    $added = 0
+    foreach ($p in $Paths) {
+        if ($p -and (Test-Path -LiteralPath $p) -and (-not $script:ManualSources.Contains($p))) {
+            $script:ManualSources.Add($p); $added++
+        }
+    }
+    if ($added -gt 0) {
+        Update-ManualSourcesList
+        Update-SelectionCount
+        Add-LogLine "Added $added source item(s) via the folder/file picker." 'INFO'
+    }
+}
+
+function Select-FoldersLoop {
+    # Windows has no built-in multi-select folder dialog, so this re-opens the
+    # native folder browser after each pick and asks whether to add another -
+    # each pick is still a genuine native Windows picker.
+    $result = New-Object System.Collections.Generic.List[string]
+    $start = $null
+    while ($true) {
+        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+        $dlg.Description = 'Select a folder to add as a source (its sub-folders and files are included)'
+        $dlg.ShowNewFolderButton = $false
+        if ($start -and (Test-Path -LiteralPath $start)) { $dlg.SelectedPath = $start }
+        if ($dlg.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { break }
+        $result.Add($dlg.SelectedPath)
+        $start = $dlg.SelectedPath
+        $again = [System.Windows.MessageBox]::Show('Add another folder?', 'Add Source', 'YesNo', 'Question')
+        if ($again -ne 'Yes') { break }
+    }
+    return $result
+}
+
+function Select-FilesMulti {
+    $dlg = New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Title = 'Select file(s) to add as a source'
+    $dlg.Multiselect = $true
+    $dlg.CheckFileExists = $true
+    $dlg.Filter = 'All files (*.*)|*.*'
+    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { return @($dlg.FileNames) }
+    return @()
 }
 
 function Set-AllChecks {
@@ -1135,7 +1216,9 @@ function Start-Transfer {
         if ($items.Count -gt $maxShow) { $shown += "   ... and $($items.Count - $maxShow) more" }
         $archiveNote = "COMBINED into ONE archive - ${caseSafe}.$fmt$splitSuffix`n`nSelected items (full source path):`n$($shown -join "`n")"
         $destPath = Join-Path $config.NetworkShare $caseSafe
-        $srcRootFull = "$(Get-SelectedDriveRoot)\"
+        $driveRoot = Get-SelectedDriveRoot
+        $srcRootFull = if ($driveRoot) { "$driveRoot\" } else { '(none selected)' }
+        if ($script:ManualSources.Count -gt 0) { $srcRootFull += " + $($script:ManualSources.Count) manually added source(s)" }
         $integrity = if ($config.EmbedManifest) {
             "Originals will be hashed ($($config.HashAlgorithms -join ' + '))" +
             $(if ($config.VerifyAfterTransfer) { ' and verified at the destination' } else { ' (no destination verify)' }) + '.'
@@ -1394,6 +1477,17 @@ WORKFLOW
   3. Press "Start Transfer" and confirm the summary (which lists the folders, the
      destination and the zip names).
 
+ADD SOURCE (folders/files from anywhere)
+  Use "Add Folder(s)..." / "Add Files..." above the tree to bring in extra
+  folders or files that aren't on the connected drive - each opens a native
+  Windows picker. "Add Folder(s)..." re-opens the folder browser after each
+  pick so you can add several in a row (its sub-folders/files all come along
+  automatically); "Add Files..." supports selecting multiple files in one go.
+  Everything added this way is listed under "Added sources" below the tree
+  and is always included in the transfer alongside whatever's ticked in the
+  tree. Select an entry and click "Remove Selected", or "Clear Added" to
+  remove them all.
+
 QUICK TRANSFER
   The "Quick Transfer" button applies the fastest possible settings: store (no
   compression), split into 250 MB parts (each one starts transferring as soon
@@ -1505,6 +1599,19 @@ $ctrl.BtnStart.Add_Click({ Start-Transfer })
 $ctrl.BtnCancel.Add_Click({ Stop-Transfer })
 $ctrl.BtnSelectAll.Add_Click({ Set-AllChecks $true })
 $ctrl.BtnSelectNone.Add_Click({ Set-AllChecks $false })
+$ctrl.BtnAddFolder.Add_Click({ $paths = @(Select-FoldersLoop); if ($paths.Count) { Add-ManualSources $paths } })
+$ctrl.BtnAddFiles.Add_Click({ $paths = @(Select-FilesMulti); if ($paths.Count) { Add-ManualSources $paths } })
+$ctrl.BtnRemoveManualSource.Add_Click({
+    $sel = @($ctrl.LstManualSources.SelectedItems | ForEach-Object { $_.ToString() })
+    foreach ($s in $sel) { [void]$script:ManualSources.Remove($s) }
+    if ($sel.Count) { Update-ManualSourcesList; Update-SelectionCount; Add-LogLine "Removed $($sel.Count) manually added source(s)." 'INFO' }
+})
+$ctrl.BtnClearManualSources.Add_Click({
+    if ($script:ManualSources.Count) {
+        $script:ManualSources.Clear(); Update-ManualSourcesList; Update-SelectionCount
+        Add-LogLine 'Cleared all manually added sources.' 'INFO'
+    }
+})
 $ctrl.BtnSaveOptions.Add_Click({ Save-Options })
 $ctrl.BtnBrowseNet.Add_Click({ $p = Select-Folder 'Select the destination folder (UNC share or local path)' $ctrl.OptNet.Text; if ($p) { $ctrl.OptNet.Text = $p } })
 $ctrl.BtnBrowseTemp.Add_Click({ $p = Select-Folder 'Select the local Temp folder' (Expand-A4950Path $ctrl.OptTemp.Text); if ($p) { $ctrl.OptTemp.Text = $p } })
