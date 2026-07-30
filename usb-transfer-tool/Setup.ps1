@@ -77,7 +77,7 @@ $configPath = Get-ConfigPath
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Auto 49/50 - Setup Wizard" Height="640" Width="640"
+        Title="Auto 49/50 - Setup Wizard" Height="640" Width="640" MinWidth="480" MinHeight="420" ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen" Background="#FF2A2A33" FontFamily="Segoe UI">
   <ScrollViewer VerticalScrollBarVisibility="Auto">
   <StackPanel Margin="18">

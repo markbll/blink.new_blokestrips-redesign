@@ -66,6 +66,7 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Auto 49/50 - USB Compression &amp; Transfer Tool" Height="820" Width="1460"
+        MinWidth="1150" MinHeight="700" ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen" WindowState="Maximized" Background="#FF1E1E24" FontFamily="Segoe UI">
   <Window.Resources>
     <SolidColorBrush x:Key="Panel"  Color="#FF2A2A33"/>
@@ -179,9 +180,9 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
     <!-- Body -->
     <Grid Grid.Row="2">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="440"/>
-        <ColumnDefinition x:Name="ColOptions" Width="300"/>
-        <ColumnDefinition Width="1.2*"/>
+        <ColumnDefinition Width="440" MinWidth="420"/>
+        <ColumnDefinition x:Name="ColOptions" Width="300" MinWidth="260"/>
+        <ColumnDefinition Width="1.2*" MinWidth="360"/>
       </Grid.ColumnDefinitions>
 
       <!-- Transfer details + selection -->
@@ -288,11 +289,11 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
               <Separator Margin="0,6"/>
               <TextBlock Text="SIZING / COMPRESSION" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,2,0,4"/>
               <TextBlock Text="Archive format"/>
-              <ComboBox x:Name="OptFormat"><ComboBoxItem>zip</ComboBoxItem><ComboBoxItem>7z</ComboBoxItem></ComboBox>
+              <ComboBox x:Name="OptFormat" Foreground="#FF202020"><ComboBoxItem>zip</ComboBoxItem><ComboBoxItem>7z</ComboBoxItem></ComboBox>
               <TextBlock Text="All selected folders/files are always combined into ONE archive."
                          Foreground="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
               <TextBlock Text="Split size (per volume)"/>
-              <ComboBox x:Name="OptVolume" IsEditable="True">
+              <ComboBox x:Name="OptVolume" IsEditable="True" Foreground="#FF202020">
                 <ComboBoxItem>No split (single file)</ComboBoxItem>
                 <ComboBoxItem>500</ComboBoxItem>
                 <ComboBoxItem>1024</ComboBoxItem>
@@ -748,8 +749,8 @@ function Show-AddSourceDialog {
     [xml]$sx = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Add Source" Height="280" Width="420" WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize" Background="#FF2A2A33" FontFamily="Segoe UI">
+        Title="Add Source" Height="280" Width="420" MinWidth="340" MinHeight="240" WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize" Background="#FF2A2A33" FontFamily="Segoe UI">
   <StackPanel Margin="20">
     <TextBlock Text="ADD SOURCE" FontSize="16" FontWeight="Bold" Foreground="#FF4FC3F7" Margin="0,0,0,8"/>
     <TextBlock TextWrapping="Wrap" Foreground="#FF9AA0A6" Margin="0,0,0,16"
@@ -1027,7 +1028,7 @@ function Show-ProgressWindow {
     [xml]$px = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Transfer in progress" Height="560" Width="820" WindowStartupLocation="CenterOwner"
+        Title="Transfer in progress" Height="560" Width="820" MinWidth="560" MinHeight="380" ResizeMode="CanResize" WindowStartupLocation="CenterOwner"
         Background="#FF1E1E24" FontFamily="Segoe UI">
   <Grid Margin="12">
     <Grid.RowDefinitions>
@@ -1123,7 +1124,7 @@ function Show-SpaceWarningDialog {
     [xml]$dx = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Destination free space" Height="420" Width="640" WindowStartupLocation="CenterOwner"
+        Title="Destination free space" Height="420" Width="640" MinWidth="440" MinHeight="300" ResizeMode="CanResize" WindowStartupLocation="CenterOwner"
         Background="#FF2A2A33" FontFamily="Segoe UI">
   <Grid Margin="16">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
