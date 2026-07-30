@@ -225,20 +225,17 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
           <CheckBox Grid.Row="3" x:Name="ChkAuto" Margin="0,8,0,0"
                     Content="Auto-transfer when a USB drive is plugged in (needs CMS case, OP name or pass no.)"/>
 
-          <!-- SOURCE section: auto-detected USB drive, plus manually-added folders/files -->
+          <!-- SOURCE section: auto-detected USB drive, plus manually-added folders/sub-folders/files -->
           <Border Grid.Row="4" Background="#FF33334A" CornerRadius="6" Padding="8" Margin="0,10,0,4" BorderBrush="{StaticResource Accent}" BorderThickness="1">
             <StackPanel>
               <TextBlock Text="SOURCE" FontWeight="Bold" FontSize="14" Foreground="{StaticResource Accent}" Margin="0,0,0,6"/>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                 <TextBlock Text="Drive:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                 <ComboBox x:Name="CmbDrive" Width="120" Foreground="#FF202020" VerticalAlignment="Center"/>
                 <Button x:Name="BtnDriveRefresh" Content="Refresh Drives"/>
               </StackPanel>
-              <TextBlock Text="Add folders/files from anywhere (separate Windows picker):" Foreground="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4"/>
-              <StackPanel Orientation="Horizontal">
-                <Button x:Name="BtnAddFolder" Content="Add Folder(s)..." Background="#FF7B5BD1" FontSize="13"/>
-                <Button x:Name="BtnAddFiles"  Content="Add Files..."     Background="#FF7B5BD1" FontSize="13"/>
-              </StackPanel>
+              <Button x:Name="BtnSource" Content="Source..." Background="#FF7B5BD1" FontSize="14" FontWeight="Bold" Padding="12,10" HorizontalAlignment="Stretch"/>
+              <TextBlock Text="Pick folders, sub-folders and files from anywhere (separate Windows picker)." Foreground="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
             </StackPanel>
           </Border>
 
@@ -737,6 +734,33 @@ function Add-ManualSources {
         Update-SelectionCount
         Add-LogLine "Added $added source item(s) via the folder/file picker." 'INFO'
     }
+}
+
+function Show-AddSourceDialog {
+    [xml]$sx = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add Source" Height="280" Width="420" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" Background="#FF2A2A33" FontFamily="Segoe UI">
+  <StackPanel Margin="20">
+    <TextBlock Text="ADD SOURCE" FontSize="16" FontWeight="Bold" Foreground="#FF4FC3F7" Margin="0,0,0,8"/>
+    <TextBlock TextWrapping="Wrap" Foreground="#FF9AA0A6" Margin="0,0,0,16"
+               Text="Choose what to add. Picking a folder includes all of its sub-folders and files automatically."/>
+    <Button x:Name="SFolder" Content="Add Folder(s)..." Height="42" FontSize="14" FontWeight="Bold" Background="#FF7B5BD1" Foreground="#FFECECEC" BorderThickness="0" Margin="0,0,0,8"/>
+    <Button x:Name="SFiles"  Content="Add Files..."     Height="42" FontSize="14" FontWeight="Bold" Background="#FF7B5BD1" Foreground="#FFECECEC" BorderThickness="0" Margin="0,0,0,8"/>
+    <Button x:Name="SCancel" Content="Cancel" Height="32" Background="#FF3A3A46" Foreground="#FFECECEC" BorderThickness="0"/>
+  </StackPanel>
+</Window>
+"@
+    $sw = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $sx))
+    $sw.Owner = $window
+    $g = { param($n) $sw.FindName($n) }
+    $script:AddSourceChoice = $null
+    (& $g 'SFolder').Add_Click({ $script:AddSourceChoice = 'folder'; $sw.Close() })
+    (& $g 'SFiles').Add_Click({ $script:AddSourceChoice = 'files';  $sw.Close() })
+    (& $g 'SCancel').Add_Click({ $script:AddSourceChoice = $null;   $sw.Close() })
+    [void]$sw.ShowDialog()
+    return $script:AddSourceChoice
 }
 
 function Select-FoldersLoop {
@@ -1504,12 +1528,16 @@ WORKFLOW
   3. Press "Start Transfer" and confirm the summary (which lists the folders, the
      destination and the zip names).
 
-ADD SOURCE (folders/files from anywhere)
-  Use "Add Folder(s)..." / "Add Files..." above the tree to bring in extra
-  folders or files that aren't on the connected drive - each opens a native
-  Windows picker. "Add Folder(s)..." re-opens the folder browser after each
-  pick so you can add several in a row (its sub-folders/files all come along
-  automatically); "Add Files..." supports selecting multiple files in one go.
+SOURCE BUTTON (folders, sub-folders and files from anywhere)
+  Click the "Source..." button in the SOURCE section to bring in folders or
+  files that aren't on the connected drive at all - a network path, another
+  local drive, anywhere. It opens a small chooser:
+    - "Add Folder(s)..." opens the native Windows folder browser, and
+      re-opens it after each pick so you can add several folders in a row
+      (Windows has no built-in multi-select folder dialog); every
+      sub-folder and file under a picked folder is included automatically.
+    - "Add Files..." opens a native multi-select file dialog - pick as many
+      individual files as you like in one go.
   Everything added this way is listed under "Added sources" below the tree
   and is always included in the transfer alongside whatever's ticked in the
   tree. Select an entry and click "Remove Selected", or "Clear Added" to
@@ -1626,8 +1654,12 @@ $ctrl.BtnStart.Add_Click({ Start-Transfer })
 $ctrl.BtnCancel.Add_Click({ Stop-Transfer })
 $ctrl.BtnSelectAll.Add_Click({ Set-AllChecks $true })
 $ctrl.BtnSelectNone.Add_Click({ Set-AllChecks $false })
-$ctrl.BtnAddFolder.Add_Click({ $paths = @(Select-FoldersLoop); if ($paths.Count) { Add-ManualSources $paths } })
-$ctrl.BtnAddFiles.Add_Click({ $paths = @(Select-FilesMulti); if ($paths.Count) { Add-ManualSources $paths } })
+$ctrl.BtnSource.Add_Click({
+    switch (Show-AddSourceDialog) {
+        'folder' { $paths = @(Select-FoldersLoop); if ($paths.Count) { Add-ManualSources $paths } }
+        'files'  { $paths = @(Select-FilesMulti);  if ($paths.Count) { Add-ManualSources $paths } }
+    }
+})
 $ctrl.BtnRemoveManualSource.Add_Click({
     $sel = @($ctrl.LstManualSources.SelectedItems | ForEach-Object { $_.ToString() })
     foreach ($s in $sel) { [void]$script:ManualSources.Remove($s) }

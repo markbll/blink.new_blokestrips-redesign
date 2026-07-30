@@ -49,7 +49,7 @@ detects this and will tell you.
 │ OP Name (UPPERCASE)   │ Format / Split size │  [09:31:02] Created: CASE.zip.001      │
 │ ☑ Auto-transfer       │ Level / Hashing     │ Temp folder activity                   │
 │ Drive ▼ [Sel][Desel]  │ ...all options...   │  [09:30:58] Created: CASE.zip.001      │
-│ [Add Folder(s)][Files]│ [ Save Options ]    │                                         │
+│ [   Source...   ]     │ [ Save Options ]    │                                         │
 │ ☑ Photos  ☑ report    │                     │                                         │
 │ Added sources: (list) │                     │                                         │
 ├───────────────────────┴─────────────────────┴─────────────────────────────────────────┤
@@ -96,15 +96,15 @@ Win+L lock or a lock screen enforced by Group Policy.
   job — to transfer a specific sub-folder only, untick the parent and drill into
   it (or transfer the whole folder).
 
-### Add source (folders/files from anywhere)
-- **"Add Folder(s)..."** and **"Add Files..."**, above the tree, open **separate
-  native Windows pickers** so you can add sources that aren't on the connected
-  drive at all — a network path, another local drive, anywhere.
-- "Add Folder(s)..." re-opens the standard folder browser after each pick and
-  asks whether to add another, so you can add several folders in one go
+### Add source (folders, sub-folders and files from anywhere)
+- The **"Source..."** button, in the SOURCE section above the tree, opens a
+  small chooser with two options — so you can add sources that aren't on the
+  connected drive at all: a network path, another local drive, anywhere.
+- **"Add Folder(s)..."** re-opens the standard folder browser after each pick
+  and asks whether to add another, so you can add several folders in one go
   (Windows has no built-in multi-select folder dialog); every sub-folder and
   file under a picked folder is included automatically.
-- "Add Files..." opens a standard multi-select file dialog — pick as many
+- **"Add Files..."** opens a standard multi-select file dialog — pick as many
   individual files as you like in one go.
 - Everything added this way shows up in the **"Added sources"** list under the
   tree and is always included in the transfer, in addition to whatever's
