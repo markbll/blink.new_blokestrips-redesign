@@ -24,20 +24,22 @@ single combined archive, and transfers it to a destination — all tagged with a
 | Fault handling | Per-item and per-file errors are logged and skipped without aborting the whole job |
 | CMS / OP / Pass in the name | CMS case (`CMS-A…`), **UPPERCASE** OP name, and operator **pass number** are combined into the folder/archive name |
 | Quick Transfer | One button applies the fastest settings (store, **split into 250 MB parts**, **no hashing, no manifest, no verify**) — warns first that integrity is not recorded |
-| All options on the main screen | Every setting (incl. **sizing** dropdown) on the on-screen Options panel; **Browse…** pickers for share/staging/7-Zip |
+| All options on the main screen | Every setting (incl. **sizing** dropdown) on the on-screen Options panel; **Browse…** pickers for share/temp/7-Zip |
 | Compress with 7-Zip | `7z.exe`, level 0–9, `zip` (default) or `7z`, optional AES-256 password |
-| Split into multiple files | Split-size **dropdown** (presets or custom MB; default **2 GB**); `0` = single file |
+| Split into multiple files | Split-size **dropdown** (presets or custom MB; default **250 MB**); `0` = single file |
 | SHA-256 + MD5 of originals | Per-file manifest (`.txt` + `.csv`), **embedded in the archive** |
 | Transfer to a destination | UNC share or local folder; robocopy with Copy-Item fallback |
 | Combined single archive | All selected folders/files are always packed into ONE archive (not configurable) — one manifest covers everything, entries prefixed by each item's own top-level folder name |
 | Transfer starts as soon as it's ready | For a split `zip`, each volume (`.001`, `.002`, …) begins transferring the instant it's fully written — no need to wait for the rest. `7z` volumes and unsplit archives transfer once the whole file is confirmed complete |
 | Live transfer status | Per-file transfer status + running count on screen |
 | Instant cancel + cleanup | Cancel kills 7-Zip/robocopy in ~150 ms and deletes temp files |
-| Temp cleanup on success | Each file is removed from staging once its transfer is **confirmed** (copied, and hash-verified if verification is on); the whole temp job folder is swept at the end once *everything* is confirmed. Nothing is deleted if a file failed or failed verification |
+| Temp cleanup on success | Each file is removed from the temp folder once its transfer is **confirmed** (copied, and hash-verified if verification is on); the whole temp job folder is swept at the end once *everything* is confirmed (default behaviour). Nothing is deleted if a file failed or failed verification |
 | Failed-transfer log | If some files were already sent, a "FAILED TRANSFER" log (names, hashes, times) is written and sent |
 | Destination space check | Before starting, estimates the source size vs. destination free space; if it looks tight, suggests a compression level/format estimated to fit (or lets you continue/cancel) |
-| Full-screen GUI | The window opens maximised |
-| Collapsible Options | "Hide Options" in the header collapses the Options panel, giving the Activity Log more room |
+| Full-screen GUI | The window opens maximised; the System Monitor is a compact strip across the top, and the Activity Log spans the full width at the bottom with room for 10+ lines |
+| Live file activity | Two live-updating panels show files as they land in the destination folder and in the local temp folder |
+| Keep awake during transfer | Prevents Windows from sleeping or turning off the display while a transfer is running (does not override a manual lock or Group-Policy-enforced lock screen) |
+| Collapsible Options | "Hide Options" in the header collapses the Options panel, giving the other panels more room |
 | Real-time events/log | Colour-coded activity log (auto-scrolls) with hashes, file names, dates/times; per-case `.log` file |
 | Post-transfer verification | Re-hash the archive at the destination (SHA-256 match) |
 | Notification sounds | An audible chime on a clean finish, and an alert sound on any error — Windows system sounds, respecting your OS volume/mute |
@@ -102,16 +104,16 @@ powershell -ExecutionPolicy Bypass -File .\Start-Auto4950.ps1
 Or right-click either `.ps1` and choose **Run with PowerShell**.
 
 1. Connect a USB drive → it is **scanned** and its folders/files are listed.
-2. Tick what to capture (all pre-selected); use **Select All** / **Deselect All**.
+2. Tick what to transfer (all pre-selected); use **Select All** / **Deselect All**.
 3. Enter **either** a CMS case (e.g. `CMS-A12345`) **or** an **UPPERCASE** OP name.
-4. Click **Start Capture** and confirm — or tick **Auto-transfer** to skip the
+4. Click **Start Transfer** and confirm — or tick **Auto-transfer** to skip the
    prompts and start automatically whenever a drive is plugged in (it just needs
    a CMS case or OP name to already be filled in).
 
 All options — including **sizing/volume split** — live in the **Options** panel on
 the main screen; **Save Options** persists them.
 
-Output at the destination (default: `zip` format, split into 2 GB volumes;
+Output at the destination (default: `zip` format, split into 250 MB volumes;
 everything selected is always combined into ONE archive):
 
 ```
@@ -163,13 +165,13 @@ See `config.example.json`. Key settings:
 - All selected folders/files are always combined into **one** archive — this
   is fixed behavior, not a setting.
 - **VolumeSizeMB** — split the archive into volumes of this size in MB
-  (default **2048** = 2 GB); `0` = one file. Changeable in Setup **and** Settings.
+  (default **250** MB); `0` = one file. Changeable in Setup **and** Settings.
 - **CompressionLevel** — `0` (store, fastest) … `9` (ultra, smallest).
 - **HashAlgorithms** — any of `SHA256`, `MD5`.
 - **VerifyAfterTransfer** — re-hash the archive at the destination.
 - **AutoTransfer** — start automatically on USB insert (needs a CMS case or OP name).
-- **StagingFolder** — local temp area for archives before transfer, default `C:\temp`.
-- **DeleteLocalArchive** — delete each staged file once its transfer is
+- **TempFolder** — local temp area for archives before transfer, default `C:\temp`.
+- **DeleteLocalArchive** — delete each temp file once its transfer is
   **confirmed** (default **on**); the whole temp job folder is removed once every
   file in the job is confirmed. Anything not confirmed (failed copy, failed
   verification, or a cancelled job) is left in place for review.
@@ -178,7 +180,7 @@ See `config.example.json`. Key settings:
 
 ### Destination free-space check
 
-Before a capture starts, the tool sums the size of the selected items and
+Before a transfer starts, the tool sums the size of the selected items and
 compares it against an **estimate** of the compressed size at your current
 settings, then checks that estimate against the free space actually available
 at the destination (works for both UNC shares and local folders). If it looks

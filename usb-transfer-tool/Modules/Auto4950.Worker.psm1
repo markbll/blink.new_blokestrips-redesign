@@ -40,7 +40,15 @@ function Write-A4950WorkerLog {
     )
     Send-A4950Event -Shared $Shared -Type 'log' -Data @{ Level = $Level; Text = $Message }
     if ($Shared.LogFile) {
-        try { Write-A4950Log -Path $Shared.LogFile -Message $Message -Level $Level } catch {}
+        # Write-A4950Log returns the formatted line (by design, for callers that
+        # want it); that return value MUST be suppressed here. Left uncaptured,
+        # it leaks onto this function's own output stream, and since this
+        # function is called from inside -OnPartReady callbacks deep within
+        # New-A4950Archive/Split-A4950File, the leaked string ends up mixed
+        # into THEIR return value too - turning a clean single result object
+        # into an array and breaking any ".Cancelled"-style property access
+        # under Set-StrictMode ("property cannot be found on this object").
+        try { Write-A4950Log -Path $Shared.LogFile -Message $Message -Level $Level | Out-Null } catch {}
     }
 }
 
@@ -60,7 +68,7 @@ function Invoke-A4950TransferJob {
     $caseSafe   = New-A4950CaseFolderName -CaseNumber $case
     $items      = @($Shared.Items)
     $sevenZip   = Resolve-SevenZip -PreferredPath $cfg.SevenZipPath
-    $staging    = Join-Path (Expand-A4950Path $cfg.StagingFolder) $caseSafe
+    $staging    = Join-Path (Expand-A4950Path $cfg.TempFolder) $caseSafe
     $destFolder = Join-Path $cfg.NetworkShare $caseSafe
 
     # Cancel probe reused by 7-Zip and robocopy so both can be killed instantly.
@@ -71,7 +79,7 @@ function Invoke-A4950TransferJob {
     try {
         Write-A4950WorkerLog $Shared "=== Job started for $case ===" 'STEP'
         Write-A4950WorkerLog $Shared "7-Zip      : $sevenZip"
-        Write-A4950WorkerLog $Shared "Staging    : $staging"
+        Write-A4950WorkerLog $Shared "Temp       : $staging"
         Write-A4950WorkerLog $Shared "Destination: $destFolder"
         Write-A4950WorkerLog $Shared "Items      : $($items.Count) top-level selection(s)"
 

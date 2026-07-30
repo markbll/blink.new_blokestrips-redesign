@@ -100,8 +100,8 @@ $configPath = Get-ConfigPath
     </DockPanel>
     <TextBlock x:Name="SzStatus" Foreground="#FF9AA0A6" FontSize="11" Margin="0,0,0,10"/>
 
-    <TextBlock Text="3. Staging folder (local, temporary)" Foreground="#FFECECEC" FontWeight="SemiBold"/>
-    <TextBox x:Name="Stage" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
+    <TextBlock Text="3. Temp folder (local, temporary)" Foreground="#FFECECEC" FontWeight="SemiBold"/>
+    <TextBox x:Name="Temp" Padding="5" Margin="0,2,0,10" Background="#FF20202A" Foreground="#FFECECEC"/>
 
     <Grid>
       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
@@ -143,7 +143,7 @@ $g = { param($n) $w.FindName($n) }
 
 (& $g 'Net').Text    = $config.NetworkShare
 (& $g 'Sz').Text     = $config.SevenZipPath
-(& $g 'Stage').Text  = $config.StagingFolder
+(& $g 'Temp').Text   = $config.TempFolder
 (& $g 'Prefix').Text = $config.CasePrefix
 (& $g 'Level').Value  = [double]$config.CompressionLevel
 (& $g 'LevelLbl').Text = "Level $($config.CompressionLevel) (0=store, 9=ultra)"
@@ -205,7 +205,7 @@ foreach ($it in (& $g 'Fmt').Items) { if ($it.Content -eq $config.ArchiveFormat)
 (& $g 'Save').Add_Click({
     $config.NetworkShare        = (& $g 'Net').Text.Trim()
     $config.SevenZipPath        = (& $g 'Sz').Text.Trim()
-    $config.StagingFolder       = (& $g 'Stage').Text.Trim()
+    $config.TempFolder          = (& $g 'Temp').Text.Trim()
     $config.CasePrefix          = (& $g 'Prefix').Text.Trim()
     $config.CompressionLevel    = [int](& $g 'Level').Value
     $config.ArchiveFormat       = (& $g 'Fmt').SelectedItem.Content

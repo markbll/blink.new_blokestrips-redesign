@@ -4,7 +4,7 @@
   "CasePrefix": "CMS-A",
   "CompressionLevel": 5,
   "ArchiveFormat": "zip",
-  "VolumeSizeMB": 2048,
+  "VolumeSizeMB": 250,
   "Password": "",
   "HashAlgorithms": ["SHA256", "MD5"],
   "EmbedManifest": true,
@@ -13,6 +13,6 @@
   "DefaultSelectAll": true,
   "VerifyAfterTransfer": true,
   "DeleteLocalArchive": true,
-  "StagingFolder": "C:\\temp",
+  "TempFolder": "C:\\temp",
   "ExcludePatterns": ["System Volume Information", "$RECYCLE.BIN", "Thumbs.db"]
 }

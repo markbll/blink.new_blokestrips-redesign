@@ -36,7 +36,7 @@ function Get-DefaultConfig {
         # --- Compression -------------------------------------------------------
         CompressionLevel    = 5                        # 0 (store) .. 9 (ultra)
         ArchiveFormat       = 'zip'                     # zip | 7z
-        VolumeSizeMB        = 2048                      # Split archives into volumes of this size (MB). 0 = no split
+        VolumeSizeMB        = 250                       # Split archives into volumes of this size (MB). 0 = no split
         Password            = ''                       # Optional AES-256 archive password (blank = none)
         # --- Hashing -----------------------------------------------------------
         HashAlgorithms      = @('SHA256', 'MD5')       # Original-file hashing
@@ -46,8 +46,8 @@ function Get-DefaultConfig {
         AutoTransfer        = $false                   # Start automatically on insert if a CMS case / OP name is set
         DefaultSelectAll    = $true                    # Pre-select all folders/files by default
         VerifyAfterTransfer = $true                    # Re-hash the archive at destination
-        DeleteLocalArchive  = $true                    # Remove staged/temp files once confirmed transferred
-        StagingFolder       = 'C:\temp'                # Where archives are staged before transfer
+        DeleteLocalArchive  = $true                    # Remove temp files once confirmed transferred
+        TempFolder          = 'C:\temp'                # Local working folder for archives before transfer
         # --- Excludes ----------------------------------------------------------
         ExcludePatterns     = @('System Volume Information', '$RECYCLE.BIN', 'Thumbs.db')
     }
@@ -102,13 +102,19 @@ function Import-A4950Config {
                 # Overlay saved values onto the default template (keeps new keys).
                 $config[$p.Name] = $p.Value
             }
+            # Migrate the old 'StagingFolder' key (renamed to 'TempFolder') from
+            # any config.json saved before the rename, so a customised path isn't
+            # silently lost.
+            if ($raw.PSObject.Properties['StagingFolder'] -and -not $raw.PSObject.Properties['TempFolder']) {
+                $config['TempFolder'] = $raw.StagingFolder
+            }
         } catch {
             Write-Warning "Failed to parse '$Path': $($_.Exception.Message). Using defaults."
         }
     }
     # Expand environment variables inside path-like values (repairs any
     # previously-saved '$env:...' literal too - see Expand-A4950Path).
-    $config['StagingFolder'] = Expand-A4950Path $config['StagingFolder']
+    $config['TempFolder'] = Expand-A4950Path $config['TempFolder']
     return $config
 }
 

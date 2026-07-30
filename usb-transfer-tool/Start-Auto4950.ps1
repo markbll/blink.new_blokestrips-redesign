@@ -4,13 +4,13 @@
 
 .DESCRIPTION
     Watches for USB drive arrival, prompts the operator, lets them choose which
-    folders/files to capture, tags the capture with a CMS case number, then
-    hashes (SHA-256 + MD5), compresses (7-Zip) and transfers the archives to a
-    configured network share. Compression and transfer run as a pipeline so the
-    first archive starts uploading while the next is still compressing.
+    folders/files to transfer, tags the transfer with a CMS case number, OP name
+    and/or pass number, then hashes (SHA-256 + MD5), compresses everything into
+    one combined archive (7-Zip) and sends it to a configured destination.
 
     The window shows live Task-Manager-style stats (CPU, memory, network speed,
-    temp-folder free space) and a real-time activity log.
+    temp-folder free space), live destination/temp folder file activity, and a
+    real-time activity log.
 
 .NOTES
     Requires: Windows PowerShell 5.1 (or PowerShell 7 on Windows) and 7-Zip.
@@ -52,6 +52,11 @@ $script:UsbEvents    = [System.Collections.Queue]::Synchronized([System.Collecti
 $script:WorkerPs     = $null
 $script:WorkerRs     = $null
 $script:WorkerHandle = $null
+$script:DestActivityEvents = [System.Collections.Queue]::Synchronized([System.Collections.Queue]::new())
+$script:TempActivityEvents = [System.Collections.Queue]::Synchronized([System.Collections.Queue]::new())
+$script:DestWatcher  = $null
+$script:TempWatcher  = $null
+$script:SleepBlocked = $false
 
 # ----------------------------------------------------------------------------
 # XAML - user interface definition
@@ -100,7 +105,9 @@ $script:WorkerHandle = $null
   <Grid Margin="8">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
+      <RowDefinition Height="280"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
@@ -129,51 +136,54 @@ $script:WorkerHandle = $null
       </Grid>
     </Border>
 
+    <!-- System monitor: compact horizontal strip -->
+    <Border Grid.Row="1" Style="{StaticResource Card}" Padding="10,8">
+      <UniformGrid Columns="6" Rows="1">
+        <StackPanel Margin="6,0">
+          <TextBlock Text="CPU" FontSize="11" Foreground="{StaticResource Muted}"/>
+          <ProgressBar x:Name="BarCpu" Height="10" Minimum="0" Maximum="100" Foreground="#FF66BB6A" Background="#FF20202A"/>
+          <TextBlock x:Name="LblCpu" Text="0 %" Foreground="{StaticResource Muted}" FontSize="11"/>
+        </StackPanel>
+        <StackPanel Margin="6,0">
+          <TextBlock Text="Memory" FontSize="11" Foreground="{StaticResource Muted}"/>
+          <ProgressBar x:Name="BarMem" Height="10" Minimum="0" Maximum="100" Foreground="#FFFFA726" Background="#FF20202A"/>
+          <TextBlock x:Name="LblMem" Text="0 % (0 / 0 MB)" Foreground="{StaticResource Muted}" FontSize="11"/>
+        </StackPanel>
+        <StackPanel Margin="6,0">
+          <TextBlock Text="Network" FontSize="11" Foreground="{StaticResource Muted}"/>
+          <ProgressBar x:Name="BarNet" Height="10" Minimum="0" Maximum="1000" Foreground="{StaticResource Accent}" Background="#FF20202A"/>
+          <TextBlock x:Name="LblNet" Text="0 Mbps" Foreground="{StaticResource Muted}" FontSize="11"/>
+        </StackPanel>
+        <StackPanel Margin="6,0">
+          <TextBlock Text="Temp Free Space" FontSize="11" Foreground="{StaticResource Muted}"/>
+          <ProgressBar x:Name="BarTemp" Height="10" Minimum="0" Maximum="100" Foreground="#FFAB47BC" Background="#FF20202A"/>
+          <TextBlock x:Name="LblTemp" Text="0 GB free" Foreground="{StaticResource Muted}" FontSize="11"/>
+        </StackPanel>
+        <StackPanel Margin="6,0">
+          <TextBlock Text="Job Progress" FontSize="11" Foreground="{StaticResource Muted}"/>
+          <ProgressBar x:Name="BarJob" Height="10" Minimum="0" Maximum="100" Foreground="#FF66BB6A" Background="#FF20202A"/>
+          <TextBlock x:Name="LblStage" Text="No job running" Foreground="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+          <TextBlock x:Name="LblJob" Text="" Foreground="{StaticResource Muted}" FontSize="11"/>
+        </StackPanel>
+        <StackPanel Margin="6,0">
+          <TextBlock Text="Transfer Status" FontSize="11" Foreground="{StaticResource Muted}"/>
+          <ProgressBar x:Name="BarXfer" Height="10" Foreground="#FF4FC3F7" Background="#FF20202A"/>
+          <TextBlock x:Name="LblXfer" Text="Idle" Foreground="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+          <TextBlock x:Name="LblXferCount" Text="0 file(s) transferred" Foreground="{StaticResource Muted}" FontSize="11"/>
+        </StackPanel>
+      </UniformGrid>
+    </Border>
+
     <!-- Body -->
-    <Grid Grid.Row="1">
+    <Grid Grid.Row="2">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="250"/>
-        <ColumnDefinition Width="330"/>
+        <ColumnDefinition Width="440"/>
         <ColumnDefinition x:Name="ColOptions" Width="300"/>
-        <ColumnDefinition Width="1.5*"/>
+        <ColumnDefinition Width="1.2*"/>
       </Grid.ColumnDefinitions>
 
-      <!-- Live system stats -->
-      <Border Grid.Column="0" Style="{StaticResource Card}">
-        <StackPanel>
-          <TextBlock Text="SYSTEM MONITOR" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,0,8"/>
-
-          <TextBlock Text="CPU"/>
-          <ProgressBar x:Name="BarCpu" Height="14" Minimum="0" Maximum="100" Foreground="#FF66BB6A" Background="#FF20202A"/>
-          <TextBlock x:Name="LblCpu" Text="0 %" Foreground="{StaticResource Muted}" Margin="0,2,0,10"/>
-
-          <TextBlock Text="Memory"/>
-          <ProgressBar x:Name="BarMem" Height="14" Minimum="0" Maximum="100" Foreground="#FFFFA726" Background="#FF20202A"/>
-          <TextBlock x:Name="LblMem" Text="0 % (0 / 0 MB)" Foreground="{StaticResource Muted}" Margin="0,2,0,10"/>
-
-          <TextBlock Text="Network Throughput"/>
-          <ProgressBar x:Name="BarNet" Height="14" Minimum="0" Maximum="1000" Foreground="{StaticResource Accent}" Background="#FF20202A"/>
-          <TextBlock x:Name="LblNet" Text="0 Mbps" Foreground="{StaticResource Muted}" Margin="0,2,0,10"/>
-
-          <TextBlock Text="Temp Folder Free Space"/>
-          <ProgressBar x:Name="BarTemp" Height="14" Minimum="0" Maximum="100" Foreground="#FFAB47BC" Background="#FF20202A"/>
-          <TextBlock x:Name="LblTemp" Text="0 GB free" Foreground="{StaticResource Muted}" Margin="0,2,0,10"/>
-
-          <Separator Margin="0,6"/>
-          <TextBlock Text="Job Progress" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,4,0,4"/>
-          <TextBlock x:Name="LblStage" Text="No job running" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
-          <ProgressBar x:Name="BarJob" Height="16" Minimum="0" Maximum="100" Foreground="#FF66BB6A" Background="#FF20202A" Margin="0,4,0,0"/>
-          <TextBlock x:Name="LblJob" Text="" Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
-
-          <TextBlock Text="Transfer Status" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,10,0,4"/>
-          <TextBlock x:Name="LblXfer" Text="Idle" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
-          <ProgressBar x:Name="BarXfer" Height="12" Foreground="#FF4FC3F7" Background="#FF20202A" Margin="0,4,0,0"/>
-          <TextBlock x:Name="LblXferCount" Text="0 file(s) transferred" Foreground="{StaticResource Muted}" Margin="0,2,0,0"/>
-        </StackPanel>
-      </Border>
-
       <!-- Transfer details + selection -->
-      <Border Grid.Column="1" Style="{StaticResource Card}">
+      <Border Grid.Column="0" Style="{StaticResource Card}">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -236,7 +246,7 @@ $script:WorkerHandle = $null
       </Border>
 
       <!-- Options (all settings, on the main screen) -->
-      <Border x:Name="PanelOptions" Grid.Column="2" Style="{StaticResource Card}">
+      <Border x:Name="PanelOptions" Grid.Column="1" Style="{StaticResource Card}">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -256,10 +266,10 @@ $script:WorkerHandle = $null
                 <Button x:Name="BtnBrowse7z" Content="Browse..." DockPanel.Dock="Right" Margin="6,2,0,8" Foreground="#FF202020"/>
                 <TextBox x:Name="Opt7z"/>
               </DockPanel>
-              <TextBlock Text="Staging folder (local temp)"/>
+              <TextBlock Text="Temp folder (local working area)"/>
               <DockPanel>
-                <Button x:Name="BtnBrowseStage" Content="Browse..." DockPanel.Dock="Right" Margin="6,2,0,8" Foreground="#FF202020"/>
-                <TextBox x:Name="OptStage"/>
+                <Button x:Name="BtnBrowseTemp" Content="Browse..." DockPanel.Dock="Right" Margin="6,2,0,8" Foreground="#FF202020"/>
+                <TextBox x:Name="OptTemp"/>
               </DockPanel>
               <TextBlock Text="CMS case prefix"/>
               <TextBox x:Name="OptPrefix"/>
@@ -297,7 +307,7 @@ $script:WorkerHandle = $null
               <TextBlock Text="BEHAVIOUR" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,2,0,4"/>
               <CheckBox x:Name="OptPrompt"     Content="Prompt on USB insert (when auto-transfer is off)"/>
               <CheckBox x:Name="OptSelDefault" Content="Select all folders/files by default"/>
-              <CheckBox x:Name="OptDelete"     Content="Delete temp/staged files once confirmed transferred"/>
+              <CheckBox x:Name="OptDelete"     Content="Delete temp files once confirmed transferred"/>
               <TextBlock Text="Exclude patterns (comma separated)"/>
               <TextBox x:Name="OptExcl"/>
             </StackPanel>
@@ -306,25 +316,49 @@ $script:WorkerHandle = $null
         </Grid>
       </Border>
 
-      <!-- Activity log -->
-      <Border Grid.Column="3" Style="{StaticResource Card}">
+      <!-- Live file activity: destination + temp folder -->
+      <Border Grid.Column="2" Style="{StaticResource Card}">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
           </Grid.RowDefinitions>
-          <TextBlock Grid.Row="0" Text="REAL-TIME ACTIVITY LOG" FontSize="15" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,0,8"/>
-          <Border Grid.Row="1" Background="#FF14141A" CornerRadius="6">
-            <RichTextBox x:Name="TxtLog" Background="Transparent" Foreground="#FFD4D4D4" BorderThickness="0" Padding="8"
-                         FontFamily="Consolas" FontSize="13" IsReadOnly="True"
+          <TextBlock Grid.Row="0" Text="DESTINATION FOLDER ACTIVITY" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,0,6"/>
+          <Border Grid.Row="1" Background="#FF14141A" CornerRadius="6" Margin="0,0,0,8">
+            <RichTextBox x:Name="TxtDestActivity" Background="Transparent" Foreground="#FFD4D4D4" BorderThickness="0" Padding="8"
+                         FontFamily="Consolas" FontSize="12" IsReadOnly="True"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+          </Border>
+          <TextBlock Grid.Row="2" Text="TEMP FOLDER ACTIVITY" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,0,6"/>
+          <Border Grid.Row="3" Background="#FF14141A" CornerRadius="6">
+            <RichTextBox x:Name="TxtTempActivity" Background="Transparent" Foreground="#FFD4D4D4" BorderThickness="0" Padding="8"
+                         FontFamily="Consolas" FontSize="12" IsReadOnly="True"
                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
           </Border>
         </Grid>
       </Border>
     </Grid>
 
+    <!-- Activity log: bottom, full width, sized for >= 10 visible lines -->
+    <Border Grid.Row="3" Style="{StaticResource Card}">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="REAL-TIME ACTIVITY LOG" FontSize="15" FontWeight="Bold" Foreground="{StaticResource Accent}" Margin="0,0,0,8"/>
+        <Border Grid.Row="1" Background="#FF14141A" CornerRadius="6">
+          <RichTextBox x:Name="TxtLog" Background="Transparent" Foreground="#FFD4D4D4" BorderThickness="0" Padding="8"
+                       FontFamily="Consolas" FontSize="13" IsReadOnly="True"
+                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+        </Border>
+      </Grid>
+    </Border>
+
     <!-- Footer / actions -->
-    <Border Grid.Row="2" Style="{StaticResource Card}">
+    <Border Grid.Row="4" Style="{StaticResource Card}">
       <Grid>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*"/>
@@ -333,7 +367,7 @@ $script:WorkerHandle = $null
         <TextBlock x:Name="LblDest" Grid.Column="0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"
                    Text="Destination: (configure in the Options panel)"/>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
-          <Button x:Name="BtnStart"  Content="Start Capture" Background="#FF2E7D32" FontSize="14"/>
+          <Button x:Name="BtnStart"  Content="Start Transfer" Background="#FF2E7D32" FontSize="14"/>
           <Button x:Name="BtnCancel" Content="Cancel" Background="#FF8E2A2A" IsEnabled="False"/>
         </StackPanel>
       </Grid>
@@ -368,6 +402,86 @@ function Play-A4950ErrorSound {
 
 function Play-A4950CompletedSound {
     try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
+}
+
+# ----------------------------------------------------------------------------
+# Keep the machine awake and the screen on while a transfer is running.
+# NOTE: this only stops the display/system from sleeping - it cannot override
+# a manual Win+L lock or a Group-Policy-enforced lock screen.
+# ----------------------------------------------------------------------------
+try {
+    Add-Type -Namespace Auto4950 -Name Power -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern uint SetThreadExecutionState(uint esFlags);
+'@ -ErrorAction Stop
+} catch {}
+
+function Start-A4950KeepAwake {
+    if ($script:SleepBlocked) { return }
+    try {
+        # ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+        [Auto4950.Power]::SetThreadExecutionState(0x80000003) | Out-Null
+        $script:SleepBlocked = $true
+    } catch {}
+}
+
+function Stop-A4950KeepAwake {
+    if (-not $script:SleepBlocked) { return }
+    try {
+        [Auto4950.Power]::SetThreadExecutionState(0x80000000) | Out-Null  # ES_CONTINUOUS only
+        $script:SleepBlocked = $false
+    } catch {}
+}
+
+# ----------------------------------------------------------------------------
+# Live file-activity watchers (destination + temp folder)
+# ----------------------------------------------------------------------------
+function Register-FolderWatcher {
+    param([string]$Path, $Queue, [string]$SourceIdentifier)
+
+    Get-EventSubscriber -SourceIdentifier $SourceIdentifier -ErrorAction SilentlyContinue | Unregister-Event -ErrorAction SilentlyContinue
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $null }
+
+    try {
+        $fsw = New-Object System.IO.FileSystemWatcher $Path
+        $fsw.IncludeSubdirectories = $true
+        $fsw.NotifyFilter = [System.IO.NotifyFilters]'FileName, DirectoryName, LastWrite'
+        $action = {
+            $e = $Event.SourceEventArgs
+            $q = $Event.MessageData
+            $verb = switch ($Event.SourceEventArgs.ChangeType) { 'Created' { 'Created' } 'Deleted' { 'Deleted' } 'Renamed' { 'Renamed' } default { 'Changed' } }
+            $q.Enqueue("$verb : $($e.Name)")
+        }
+        Register-ObjectEvent -InputObject $fsw -EventName Created -SourceIdentifier "$SourceIdentifier.Created" -MessageData $Queue -Action $action -ErrorAction Stop | Out-Null
+        Register-ObjectEvent -InputObject $fsw -EventName Renamed -SourceIdentifier "$SourceIdentifier.Renamed" -MessageData $Queue -Action $action -ErrorAction Stop | Out-Null
+        Register-ObjectEvent -InputObject $fsw -EventName Deleted -SourceIdentifier "$SourceIdentifier.Deleted" -MessageData $Queue -Action $action -ErrorAction Stop | Out-Null
+        $fsw.EnableRaisingEvents = $true
+        return $fsw
+    } catch {
+        Add-LogLine "Could not watch '$Path' for file activity: $($_.Exception.Message)" 'WARN'
+        return $null
+    }
+}
+
+function Unregister-FolderWatcher {
+    param($Watcher, [string]$SourceIdentifier)
+    foreach ($suffix in 'Created', 'Renamed', 'Deleted') {
+        Get-EventSubscriber -SourceIdentifier "$SourceIdentifier.$suffix" -ErrorAction SilentlyContinue | Unregister-Event -ErrorAction SilentlyContinue
+    }
+    if ($Watcher) { try { $Watcher.EnableRaisingEvents = $false; $Watcher.Dispose() } catch {} }
+}
+
+function Start-A4950ActivityWatchers {
+    Unregister-FolderWatcher $script:DestWatcher 'Auto4950DestWatcher'
+    Unregister-FolderWatcher $script:TempWatcher 'Auto4950TempWatcher'
+    $script:DestWatcher = Register-FolderWatcher -Path $config.NetworkShare -Queue $script:DestActivityEvents -SourceIdentifier 'Auto4950DestWatcher'
+    $script:TempWatcher = Register-FolderWatcher -Path (Expand-A4950Path $config.TempFolder) -Queue $script:TempActivityEvents -SourceIdentifier 'Auto4950TempWatcher'
+}
+
+function Stop-A4950ActivityWatchers {
+    Unregister-FolderWatcher $script:DestWatcher 'Auto4950DestWatcher'
+    Unregister-FolderWatcher $script:TempWatcher 'Auto4950TempWatcher'
+    $script:DestWatcher = $null; $script:TempWatcher = $null
 }
 
 function Add-RtbLine {
@@ -595,7 +709,7 @@ function Set-AllChecks {
 function Set-OptionsFromConfig {
     $ctrl.OptNet.Text       = $config.NetworkShare
     $ctrl.Opt7z.Text        = $config.SevenZipPath
-    $ctrl.OptStage.Text     = $config.StagingFolder
+    $ctrl.OptTemp.Text      = $config.TempFolder
     $ctrl.OptPrefix.Text    = $config.CasePrefix
     $ctrl.OptVolume.Text    = $(if ([int]$config.VolumeSizeMB -le 0) { 'No split (single file)' } else { [string]([int]$config.VolumeSizeMB) })
     $ctrl.OptLevel.Value    = [double]$config.CompressionLevel
@@ -617,7 +731,7 @@ function Sync-OptionsToConfig {
     # Gather the on-screen options back into $config (does not persist to disk).
     $config.NetworkShare  = $ctrl.OptNet.Text.Trim()
     $config.SevenZipPath  = $ctrl.Opt7z.Text.Trim()
-    $config.StagingFolder = $ctrl.OptStage.Text.Trim()
+    $config.TempFolder = $ctrl.OptTemp.Text.Trim()
     if ($ctrl.OptPrefix.Text.Trim()) { $config.CasePrefix = $ctrl.OptPrefix.Text.Trim() }
     if ($ctrl.OptFormat.SelectedItem) { $config.ArchiveFormat = $ctrl.OptFormat.SelectedItem.Content }
     $config.VolumeSizeMB     = Parse-SplitMB ([string]$ctrl.OptVolume.Text)
@@ -640,6 +754,7 @@ function Save-Options {
     Sync-OptionsToConfig
     Save-A4950Config -Config $config | Out-Null
     Update-Footer
+    Start-A4950ActivityWatchers
     Add-LogLine 'Options saved to config.json.' 'OK'
     if ($config.Password) { Add-LogLine 'Archive password set (avoid storing sensitive passwords in plain config).' 'WARN' }
 }
@@ -824,9 +939,9 @@ function Show-ProgressWindow {
         Close  = (& $g 'PClose')
     }
     (& $g 'PTitle').Text  = "Transfer in progress - $Name"
-    (& $g 'PStatus').Text = "Capturing $Name..."
+    (& $g 'PStatus').Text = "Transferring $Name..."
     (& $g 'PCount').Text  = '0 file(s) transferred'
-    (& $g 'PCancel').Add_Click({ Stop-Capture })
+    (& $g 'PCancel').Add_Click({ Stop-Transfer })
     (& $g 'PClose').Add_Click({ Close-ProgressWindow })
     $pw.Add_Closing({ $script:Prog = $null })
     $pw.Show()
@@ -858,7 +973,7 @@ function Toggle-OptionsPanel {
 }
 
 # ----------------------------------------------------------------------------
-# Start / cancel the capture job
+# Start / cancel the transfer job
 # ----------------------------------------------------------------------------
 # ----------------------------------------------------------------------------
 # Destination free-space pre-flight check
@@ -960,7 +1075,7 @@ function Confirm-DestinationSpace {
                 return @{ Proceed = $true; Note = "Destination free space : $(Format-A4950Bytes $free.FreeBytes)`nEstimated size to send  : $(Format-A4950Bytes $suggestion.EstimatedBytes)  (adjusted settings: $($suggestion.Format) level $($suggestion.Level))" }
             }
             'Continue' { Add-LogLine 'Continuing with current settings despite a possible space shortfall.' 'WARN'; return @{ Proceed = $true; Note = $note } }
-            default    { Add-LogLine 'Capture cancelled at the free-space warning.' 'INFO'; return @{ Proceed = $false } }
+            default    { Add-LogLine 'Transfer cancelled at the free-space warning.' 'INFO'; return @{ Proceed = $false } }
         }
     } else {
         $msg = "The selected data is unlikely to fit at the destination even at MAXIMUM compression.`n`n" +
@@ -970,16 +1085,16 @@ function Confirm-DestinationSpace {
                "different destination.`n`nThis is a PLANNING ESTIMATE only, not a guarantee."
         $resp = Show-SpaceWarningDialog -Message $msg -OfferApply $false
         if ($resp -eq 'Continue') { Add-LogLine 'Continuing despite an estimated space shortfall (no compression setting is expected to fit).' 'WARN'; return @{ Proceed = $true; Note = $note } }
-        Add-LogLine 'Capture cancelled at the free-space warning.' 'INFO'
+        Add-LogLine 'Transfer cancelled at the free-space warning.' 'INFO'
         return @{ Proceed = $false }
     }
 }
 
-function Start-Capture {
+function Start-Transfer {
     param([switch]$NoConfirm)
     if ($script:Shared.Running) { return }
 
-    # Apply the on-screen options first so the capture uses current settings.
+    # Apply the on-screen options first so the transfer uses current settings.
     Sync-OptionsToConfig
 
     $tn = Get-TransferName
@@ -997,7 +1112,7 @@ function Start-Capture {
 
     $items = Get-CheckedItems
     if ($items.Count -eq 0) {
-        [System.Windows.MessageBox]::Show('Select at least one folder or file to capture.', 'Nothing selected', 'OK', 'Warning') | Out-Null
+        [System.Windows.MessageBox]::Show('Select at least one folder or file to transfer.', 'Nothing selected', 'OK', 'Warning') | Out-Null
         return
     }
 
@@ -1028,7 +1143,7 @@ function Start-Capture {
             "WARNING: Quick Transfer - NO hashing and NO verification. File integrity will not be recorded."
         }
         $msg = @"
-Capture $($items.Count) selected item(s) as '$name' ($($tn.Kind))?
+Transfer $($items.Count) selected item(s) as '$name' ($($tn.Kind))?
 
 $($spaceCheck.Note)
 
@@ -1039,7 +1154,7 @@ $archiveNote
 
 $integrity
 "@
-        $confirm = [System.Windows.MessageBox]::Show($msg, 'Confirm capture', 'YesNo', 'Question')
+        $confirm = [System.Windows.MessageBox]::Show($msg, 'Confirm transfer', 'YesNo', 'Question')
         if ($confirm -ne 'Yes') { return }
     }
 
@@ -1055,7 +1170,7 @@ $integrity
     $script:Shared.Items      = @($items)
     $script:Shared.Cancel     = $false
     $script:Shared.Running    = $true
-    $script:Shared.LogFile    = Join-Path (Expand-A4950Path $config.StagingFolder) "$caseSafe\$caseSafe.log"
+    $script:Shared.LogFile    = Join-Path (Expand-A4950Path $config.TempFolder) "$caseSafe\$caseSafe.log"
 
     # Launch worker runspace.
     $script:WorkerRs = [runspacefactory]::CreateRunspace()
@@ -1075,12 +1190,13 @@ $integrity
 
     $ctrl.BtnStart.IsEnabled  = $false
     $ctrl.BtnCancel.IsEnabled = $true
-    $ctrl.StatusLine.Text = "Capturing $name ($($tn.Kind)) ..."
+    $ctrl.StatusLine.Text = "Transferring $name ($($tn.Kind)) ..."
+    Start-A4950KeepAwake      # prevent sleep/screen-off for the duration of the transfer
     Show-ProgressWindow -Name $name          # popup with live events
-    Add-LogLine "Capture started for $name ($($tn.Kind))." 'STEP'
+    Add-LogLine "Transfer started for $name ($($tn.Kind))." 'STEP'
 }
 
-function Stop-Capture {
+function Stop-Transfer {
     if ($script:Shared.Running) {
         $script:Shared.Cancel = $true      # worker kills 7-Zip/robocopy within ~150 ms
         $ctrl.BtnCancel.IsEnabled = $false
@@ -1091,12 +1207,13 @@ function Stop-Capture {
     }
 }
 
-function Complete-Capture {
+function Complete-Transfer {
     $ctrl.BtnStart.IsEnabled  = $true
     $ctrl.BtnCancel.IsEnabled = $false
     $ctrl.StatusLine.Text = 'Idle - waiting for a USB drive to be connected.'
     $ctrl.BarXfer.IsIndeterminate = $false
     if ($ctrl.LblXfer.Text -notmatch 'complete|cancel') { $ctrl.LblXfer.Text = 'Idle' }
+    Stop-A4950KeepAwake
     if ($script:WorkerPs) {
         try { $script:WorkerPs.EndInvoke($script:WorkerHandle) } catch {}
         $script:WorkerPs.Dispose(); $script:WorkerRs.Dispose()
@@ -1110,7 +1227,7 @@ function Complete-Capture {
 $statsTimer = New-Object System.Windows.Threading.DispatcherTimer
 $statsTimer.Interval = [TimeSpan]::FromMilliseconds(1500)
 $statsTimer.Add_Tick({
-    $stagePath = Expand-A4950Path $config.StagingFolder
+    $stagePath = Expand-A4950Path $config.TempFolder
     $tempQualifier = try { Split-Path -Qualifier $stagePath } catch { $env:SystemDrive }
     if (-not $tempQualifier) { $tempQualifier = $env:SystemDrive }
     $s = Get-A4950SystemStats -TempPath "$tempQualifier\" -Previous $script:PrevStats
@@ -1181,11 +1298,24 @@ $pumpTimer.Add_Tick({
                     $P.BarXfer.IsIndeterminate = $false; $P.BarXfer.Value = 0
                     $P.Cancel.IsEnabled = $false
                 }
-                Complete-Capture
+                Complete-Transfer
             }
         }
     }
   } catch { Add-LogLine "UI update error: $($_.Exception.Message)" 'ERROR' }
+})
+
+$activityTimer = New-Object System.Windows.Threading.DispatcherTimer
+$activityTimer.Interval = [TimeSpan]::FromMilliseconds(500)
+$activityTimer.Add_Tick({
+    while ($script:DestActivityEvents.Count -gt 0) {
+        $line = "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $script:DestActivityEvents.Dequeue()
+        Add-RtbLine $ctrl.TxtDestActivity $line '#FFD4D4D4'
+    }
+    while ($script:TempActivityEvents.Count -gt 0) {
+        $line = "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $script:TempActivityEvents.Dequeue()
+        Add-RtbLine $ctrl.TxtTempActivity $line '#FFD4D4D4'
+    }
 })
 
 $usbTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -1206,7 +1336,7 @@ $usbTimer.Add_Tick({
             $tn = Get-TransferName
             if ($tn.Ok) {
                 Add-LogLine "Auto-transfer: starting '$($tn.Name)' ($($tn.Kind)) from $drive." 'STEP'
-                Start-Capture -NoConfirm
+                Start-Transfer -NoConfirm
             } else {
                 $window.Activate()
                 Add-LogLine "Auto-transfer is ON but needs an identifier. $($tn.Reason)" 'WARN'
@@ -1223,7 +1353,7 @@ $usbTimer.Add_Tick({
                 'USB drive detected', 'YesNo', 'Question')
             if ($resp -eq 'Yes') {
                 $ctrl.TxtCase.Focus(); $ctrl.TxtCase.SelectAll()
-                Add-LogLine 'Select folders/files, enter a CMS case or OP name, then press "Start Capture".' 'INFO'
+                Add-LogLine 'Select folders/files, enter a CMS case or OP name, then press "Start Transfer".' 'INFO'
             }
         }
     }
@@ -1261,7 +1391,7 @@ WORKFLOW
   2. Fill in any of: CMS case (starts with '$($config.CasePrefix)'), OP NAME (UPPERCASE),
      PASS NUMBER. Whatever you provide is combined into the folder/file name
      (e.g. $($config.CasePrefix)12345_JBLOGGS_PASS4471). At least one is required.
-  3. Press "Start Capture" and confirm the summary (which lists the folders, the
+  3. Press "Start Transfer" and confirm the summary (which lists the folders, the
      destination and the zip names).
 
 QUICK TRANSFER
@@ -1289,15 +1419,16 @@ DESTINATION FREE SPACE
 
 TEMP CLEANUP
   Once a file's transfer is CONFIRMED (copied, and hash-verified if
-  verification is on), it is deleted from the local staging area immediately.
+  verification is on), it is deleted from the local temp area immediately.
   When every file in the job is confirmed, the whole temp job folder is
-  removed. If anything failed or failed verification, nothing is deleted so
-  you can review it. Turn this off in Options ("Delete temp/staged files once
-  confirmed transferred") to always keep the local copies.
+  removed automatically (this is the default behaviour). If anything failed
+  or failed verification, nothing is deleted so you can review it. Turn this
+  off in Options ("Delete temp files once confirmed transferred") to always
+  keep the local copies.
 
 AUTO-TRANSFER
   Tick "Auto-transfer when a USB drive is plugged in". Then, as soon as a drive
-  is connected, the capture starts automatically with NO prompts - it only
+  is connected, the transfer starts automatically with NO prompts - it only
   requires that a valid CMS case, OP name or pass number is already entered.
   If none is set you'll be asked to provide one.
 
@@ -1308,7 +1439,7 @@ COMBINED ARCHIVE
   collides.
 
 OPTIONS (all on the main screen, right-hand panel)
-  Network share, 7-Zip path, staging folder, case prefix, archive format,
+  Network share, 7-Zip path, temp folder, case prefix, archive format,
   volume/split size, compression level, password, hashing, manifest embedding,
   verification, prompt-on-insert, select-all default, delete-local and exclude
   patterns. Every option can be toggled/edited and "Save Options" persists them
@@ -1338,12 +1469,24 @@ NAMING
   reassemble; keep all parts together).
 
 SYSTEM MONITOR
-  Live CPU, memory, network throughput and temp-folder free space.
+  A compact strip across the top shows live CPU, memory, network throughput,
+  temp-folder free space, job progress and transfer status at a glance.
+
+FILE ACTIVITY
+  Below the main panels, two live lists show files as they are created in the
+  destination folder and in the local temp folder, so you can watch the
+  transfer happen in real time.
+
+KEEP AWAKE
+  While a transfer is running, the tool prevents Windows from sleeping or
+  turning off the display. It cannot override a manual Win+L lock or a
+  Group-Policy-enforced lock screen.
 
 HIDE OPTIONS
   Click "Hide Options" in the header to collapse the Options panel and give
-  the Activity Log more room; click "Show Options" to bring it back. Your
-  settings are unaffected either way - it only changes what's on screen.
+  the file-activity and Options areas more room; click "Show Options" to
+  bring it back. Your settings are unaffected either way - it only changes
+  what's on screen.
 
 See README.md and docs\USER_GUIDE.md for full documentation.
 "@
@@ -1358,13 +1501,13 @@ $ctrl.BtnToggleOptions.Add_Click({ Toggle-OptionsPanel })
 $ctrl.BtnDriveRefresh.Add_Click({ Update-DriveList; Update-TreeForDrive; Add-LogLine 'Drives refreshed.' 'INFO' })
 $ctrl.BtnHelp.Add_Click({ Show-Help })
 $ctrl.BtnQuick.Add_Click({ Set-QuickTransfer })
-$ctrl.BtnStart.Add_Click({ Start-Capture })
-$ctrl.BtnCancel.Add_Click({ Stop-Capture })
+$ctrl.BtnStart.Add_Click({ Start-Transfer })
+$ctrl.BtnCancel.Add_Click({ Stop-Transfer })
 $ctrl.BtnSelectAll.Add_Click({ Set-AllChecks $true })
 $ctrl.BtnSelectNone.Add_Click({ Set-AllChecks $false })
 $ctrl.BtnSaveOptions.Add_Click({ Save-Options })
 $ctrl.BtnBrowseNet.Add_Click({ $p = Select-Folder 'Select the destination folder (UNC share or local path)' $ctrl.OptNet.Text; if ($p) { $ctrl.OptNet.Text = $p } })
-$ctrl.BtnBrowseStage.Add_Click({ $p = Select-Folder 'Select the local staging folder' (Expand-A4950Path $ctrl.OptStage.Text); if ($p) { $ctrl.OptStage.Text = $p } })
+$ctrl.BtnBrowseTemp.Add_Click({ $p = Select-Folder 'Select the local Temp folder' (Expand-A4950Path $ctrl.OptTemp.Text); if ($p) { $ctrl.OptTemp.Text = $p } })
 $ctrl.BtnBrowse7z.Add_Click({ $p = Select-SevenZipFile; if ($p) { $ctrl.Opt7z.Text = $p } })
 $ctrl.OptLevel.Add_ValueChanged({ $ctrl.OptLevelLbl.Text = "Compression level: $([int]$ctrl.OptLevel.Value)" })
 $ctrl.OptFormat.Add_SelectionChanged({ if ($ctrl.OptFormat.SelectedItem) { $config.ArchiveFormat = $ctrl.OptFormat.SelectedItem.Content; Update-NamePreview } })
@@ -1396,7 +1539,8 @@ $window.Add_Loaded({
     Update-Footer
     Update-NamePreview
     Register-UsbWatcher
-    $statsTimer.Start(); $pumpTimer.Start(); $usbTimer.Start()
+    Start-A4950ActivityWatchers
+    $statsTimer.Start(); $pumpTimer.Start(); $usbTimer.Start(); $activityTimer.Start()
     Add-LogLine "Auto 49/50 v$script:AppVersion ready." 'OK'
     if (-not (Resolve-SevenZip -PreferredPath $config.SevenZipPath)) {
         Add-LogLine '7-Zip not found. Install it (https://www.7-zip.org) or set the 7-Zip path in Options.' 'ERROR'
@@ -1406,7 +1550,9 @@ $window.Add_Loaded({
 $window.Add_Closing({
     if ($script:Shared.Running) { $script:Shared.Cancel = $true }
     Close-ProgressWindow
-    $statsTimer.Stop(); $pumpTimer.Stop(); $usbTimer.Stop()
+    $statsTimer.Stop(); $pumpTimer.Stop(); $usbTimer.Stop(); $activityTimer.Stop()
+    Stop-A4950KeepAwake
+    Stop-A4950ActivityWatchers
     Get-EventSubscriber -SourceIdentifier 'Auto4950UsbArrival' -ErrorAction SilentlyContinue | Unregister-Event -ErrorAction SilentlyContinue
 })
 

@@ -42,27 +42,45 @@ detects this and will tell you.
 ```
 ┌ Header ───────────────────────────────────────────────────────────────────────────┐
 │ Auto 49/50 + status      [Quick Transfer] [Rescan Drives] [Hide Options] [Help]     │
-├ System Monitor ─┬ Details + Selection ─┬ Options ───────────┬ Activity Log ────────┤
-│ CPU             │ CMS Case Number      │ Destination         │ [09:31:02] ...        │
-│ Memory          │ OP Name (UPPERCASE)  │ Format / Split size │ colour-coded          │
-│ Network Mbps    │ ☑ Auto-transfer      │ Level / Hashing     │ events                │
-│ Temp free space │ Drive ▼ [Sel][Desel] │ ...all options...   │                       │
-│ Job progress    │ ☑ Photos  ☑ report   │ [ Save Options ]    │                       │
-├─────────────────┴──────────────────────┴─────────────────────┴───────────────────────┤
-│ Destination: C:\Destination...        [Start Capture]  [Cancel]                       │
+├ System Monitor (compact horizontal strip: CPU · Memory · Network · Temp free · Job │
+│ progress · Transfer status) ────────────────────────────────────────────────────────┤
+├ Details + Selection ──┬ Options ───────────┬ File Activity ─────────────────────────┤
+│ CMS Case Number       │ Destination         │ Destination folder activity            │
+│ OP Name (UPPERCASE)   │ Format / Split size │  [09:31:02] Created: CASE.zip.001      │
+│ ☑ Auto-transfer       │ Level / Hashing     │ Temp folder activity                   │
+│ Drive ▼ [Sel][Desel]  │ ...all options...   │  [09:30:58] Created: CASE.zip.001      │
+│ ☑ Photos  ☑ report    │ [ Save Options ]    │                                         │
+├───────────────────────┴─────────────────────┴─────────────────────────────────────────┤
+│ Real-Time Activity Log (full width, ≥10 lines) — [09:31:02] ... colour-coded events   │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│ Destination: C:\Destination...        [Start Transfer]  [Cancel]                       │
 └─────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Click **Hide Options** to collapse the Options column and give the Activity
-Log more room (click **Show Options** to bring it back — nothing you've set is
-lost either way).
+Click **Hide Options** to collapse the Options column and give the other
+panels more room (click **Show Options** to bring it back — nothing you've
+set is lost either way).
 
-### System Monitor (Task-Manager style)
+### System Monitor (compact strip across the top)
 - **CPU** — average processor load.
 - **Memory** — used %, with used/total MB.
 - **Network** — live throughput in **Mbps** (delta of adapter byte counters).
-- **Temp folder free space** — free/total GB on the staging drive.
-- **Job progress** — current stage (hashing / compressing) and percentage.
+- **Temp Free Space** — free/total GB on the temp-folder drive.
+- **Job Progress** — current stage (hashing / compressing) and percentage.
+- **Transfer Status** — current file being transferred and a running count.
+
+### File Activity panels
+Two live lists sit alongside the Options panel: one shows files as they are
+created in the **destination** folder, the other shows files as they are
+created in the local **temp** folder — so you can watch archives land and get
+cleaned up in real time, independent of the main activity log.
+
+### Keep awake
+While a transfer is running, the tool prevents Windows from sleeping or
+turning off the display (`SetThreadExecutionState`), so a long transfer isn't
+interrupted by the machine going to sleep. This is released automatically
+once the job finishes or is cancelled. It does **not** override a manual
+Win+L lock or a lock screen enforced by Group Policy.
 
 ### Selection panel
 - On insert the drive is **scanned automatically**; you don't have to ask for it.
@@ -73,8 +91,8 @@ lost either way).
   every selection can be de-selected.
 - Selection granularity is **top-level items** (or specific sub-folders/files
   within them). Everything you tick is combined into **one** archive for the
-  job — to capture a specific sub-folder only, untick the parent and drill into
-  it (or capture the whole folder).
+  job — to transfer a specific sub-folder only, untick the parent and drill into
+  it (or transfer the whole folder).
 
 ### CMS case number / OP name
 - Provide **either**:
@@ -86,14 +104,14 @@ lost either way).
   hint highlights until its value is valid.
 
 ### Auto-transfer
-- Tick **"Auto-transfer when a USB drive is plugged in"** to start the capture
+- Tick **"Auto-transfer when a USB drive is plugged in"** to start the transfer
   automatically on insert, with **no prompts**. It only requires that a valid
   **CMS case or OP name** is already entered; if neither is set you're asked to
-  add one. All currently-selected folders/files (all by default) are captured.
+  add one. All currently-selected folders/files (all by default) are transferred.
 
 ### Options panel (all settings, on the main screen)
-Everything is editable on the right-hand **Options** panel — destination,
-7-Zip path, staging folder, case prefix, **archive format**, **volume/split
+Everything is editable on the **Options** panel — destination,
+7-Zip path, temp folder, case prefix, **archive format**, **volume/split
 size (sizing)**, compression level, password, hashing, manifest embedding,
 verification, prompt-on-insert, select-all default, delete-local and exclude
 patterns. Changes apply immediately when you press **Start**; **Save Options**
@@ -106,13 +124,13 @@ nothing collides. Nothing transfers until that one compression pass finishes.
 
 ---
 
-## 3. Running a capture
+## 3. Running a transfer
 
 1. **Connect the USB drive** — it is scanned and its contents listed. With
    prompt-on-insert on (and auto-transfer off) a **Yes/No** dialog appears.
 2. Confirm/adjust the **selection** and enter a **CMS case, OP name or pass
    number**.
-3. Click **Start Capture**. The tool first runs a **destination free-space
+3. Click **Start Transfer**. The tool first runs a **destination free-space
    check** (see below); if that passes, confirm the summary dialog — it lists
    every selected item's full source path, the destination folder and the
    resulting archive names. (Both the space check and this dialog are skipped
@@ -147,16 +165,17 @@ than typical documents, so treat the suggestion as a guide, not a guarantee.
 5. If **VerifyAfterTransfer** is on, the archive is **re-hashed at the
    destination** and compared (SHA-256).
 6. Once a file's transfer is **confirmed** (copied, and hash-verified if
-   verification is on), it is deleted from the local staging area straight
+   verification is on), it is deleted from the local temp area straight
    away — see "Temp cleanup" below.
 
 A per-case log is also written to
-`…\StagingFolder\<CASE>\<CASE>.log`.
+`…\TempFolder\<CASE>\<CASE>.log`.
 
 ### Temp cleanup
-"Delete temp/staged files once confirmed transferred" (on by default) removes
+"Delete temp files once confirmed transferred" (on by default) removes
 each local file the moment its transfer is confirmed, and sweeps the whole
-temp job folder once *every* file in the job is confirmed. If a file failed to
+temp job folder once *every* file in the job is confirmed — the temp folder is
+cleared automatically as soon as the transfer to the destination succeeds. If a file failed to
 copy, or failed verification, it — and the rest of that job's temp folder — is
 **left in place** for you to review; nothing is ever deleted on an unconfirmed
 or failed transfer.
@@ -227,10 +246,10 @@ re-run `Setup.ps1`). All values persist to `config.json`.
 |---|---|
 | Destination | UNC share or local folder for archives; default `C:\Destination` |
 | 7-Zip path | Blank = auto-detect |
-| Staging folder | Local temp area for archives; default `C:\temp` |
+| Temp folder | Local temp area for archives; default `C:\temp` |
 | Case prefix | Required prefix for case numbers (`CMS-A`) |
 | Archive format | `zip` (default, portable) or `7z` (smaller) |
-| Split into volumes (MB) | Max size per file; default **2048** (2 GB); `0` = single file |
+| Split into volumes (MB) | Max size per file; default **250 MB**; `0` = single file |
 | Compression level | 0 (store) … 9 (ultra) |
 | Archive password | Optional AES-256 (encrypts headers too on `7z`) |
 | Hash SHA-256 / MD5 | Which hashes to compute |
@@ -239,7 +258,7 @@ re-run `Setup.ps1`). All values persist to `config.json`.
 | Auto-transfer | Start automatically on insert; needs a CMS case or OP name |
 | Select all by default | Pre-tick every folder/file |
 | Verify after transfer | Re-hash the archive at the destination |
-| Delete temp/staged files once confirmed transferred | Default **on**. Removes each file once its transfer is confirmed, and the whole temp folder once the job is fully confirmed; failed/unverified items are kept |
+| Delete temp files once confirmed transferred | Default **on**. Removes each file once its transfer is confirmed, and clears the whole temp folder automatically once the job is fully confirmed transferred; failed/unverified items are kept |
 | Exclude patterns | Names to skip (e.g. `System Volume Information`) |
 
 ---
