@@ -23,7 +23,7 @@ single combined archive, and transfers it to a destination — all tagged with a
 | Duplicate-safe destination | Never overwrites: a clashing destination file name gets a date/time appended |
 | Fault handling | Per-item and per-file errors are logged and skipped without aborting the whole job |
 | CMS / OP / Pass in the name | CMS case (`CMS-A…`), **UPPERCASE** OP name, and operator **pass number** are combined into the folder/archive name |
-| Quick Transfer | One button applies the fastest settings (store, single file, **no hashing, no manifest, no verify**) — warns first that integrity is not recorded |
+| Quick Transfer | One button applies the fastest settings (store, **split into 250 MB parts**, **no hashing, no manifest, no verify**) — warns first that integrity is not recorded |
 | All options on the main screen | Every setting (incl. **sizing** dropdown) on the on-screen Options panel; **Browse…** pickers for share/staging/7-Zip |
 | Compress with 7-Zip | `7z.exe`, level 0–9, `zip` (default) or `7z`, optional AES-256 password |
 | Split into multiple files | Split-size **dropdown** (presets or custom MB; default **2 GB**); `0` = single file |

@@ -677,7 +677,8 @@ function Set-QuickTransfer {
         "QUICK TRANSFER - fastest settings`n`n" +
         "This applies the quickest possible transfer:`n" +
         "  - Store (NO compression)`n" +
-        "  - Single file (NO splitting)`n" +
+        "  - Split into 250 MB files (so parts start transferring as soon as`n" +
+        "    each one is written, instead of waiting for one large file)`n" +
         "  - NO hashing  (SHA-256 / MD5 will NOT be calculated)`n" +
         "  - NO manifest`n" +
         "  - NO verification at the destination`n`n" +
@@ -686,11 +687,13 @@ function Set-QuickTransfer {
         'Quick Transfer - integrity disabled', 'YesNo', 'Warning')
     if ($warn -ne 'Yes') { Add-LogLine 'Quick Transfer cancelled - settings unchanged.' 'INFO'; return }
 
-    # Fastest: store (no compression), single file, no hashing, no manifest, no verify.
+    # Fastest: store (no compression), split into small (250 MB) parts so each
+    # one starts transferring as soon as it's written, no hashing, no manifest,
+    # no verify.
     foreach ($it in $ctrl.OptFormat.Items) { if ($it.Content -eq 'zip') { $ctrl.OptFormat.SelectedItem = $it } }
     $ctrl.OptLevel.Value = 0
     $ctrl.OptLevelLbl.Text = 'Compression level: 0'
-    $ctrl.OptVolume.Text = 'No split (single file)'
+    $ctrl.OptVolume.Text = '250'
     $ctrl.OptSha.IsChecked    = $false
     $ctrl.OptMd5.IsChecked    = $false
     $ctrl.OptEmbed.IsChecked  = $false   # no manifest -> originals are not hashed
@@ -698,7 +701,7 @@ function Set-QuickTransfer {
     $ctrl.OptDelete.IsChecked = $false
     Sync-OptionsToConfig
     Update-Footer
-    Add-LogLine 'Quick Transfer ON: store (no compression), single file, NO hashing, NO verify - fastest throughput.' 'WARN'
+    Add-LogLine 'Quick Transfer ON: store (no compression), split @ 250 MB, NO hashing, NO verify - fastest throughput.' 'WARN'
 }
 
 # ----------------------------------------------------------------------------
@@ -1263,10 +1266,11 @@ WORKFLOW
 
 QUICK TRANSFER
   The "Quick Transfer" button applies the fastest possible settings: store (no
-  compression), single file (no splitting), NO hashing (SHA-256/MD5 are not
-  calculated), no manifest and no verification. It warns you first, because file
-  integrity is neither recorded nor verified in this mode. Use it only when raw
-  transfer speed matters more than a hash record.
+  compression), split into 250 MB parts (each one starts transferring as soon
+  as it's written, rather than waiting for one large file), NO hashing
+  (SHA-256/MD5 are not calculated), no manifest and no verification. It warns
+  you first, because file integrity is neither recorded nor verified in this
+  mode. Use it only when raw transfer speed matters more than a hash record.
 
 CANCEL
   "Cancel" is immediate: it kills the running 7-Zip/robocopy within a fraction

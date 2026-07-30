@@ -477,7 +477,10 @@ function Split-A4950File {
         [scriptblock]$OnPartReady
     )
     $parts = New-Object System.Collections.Generic.List[string]
-    $bufSize = [int][Math]::Min($ChunkBytes, 4MB)
+    # Cast both args to [int64] explicitly - PowerShell's overload resolution
+    # can otherwise pick Math.Min(Int32,Int32) and fail converting a >2GB
+    # ChunkBytes value into Int32 ("value was either too large or too small").
+    $bufSize = [int][Math]::Min([int64]$ChunkBytes, [int64]4MB)
     $buffer = New-Object byte[] $bufSize
     $partIndex = 0
     $cancelled = $false
@@ -494,7 +497,7 @@ function Split-A4950File {
                 $remaining = $ChunkBytes
                 while ($remaining -gt 0 -and $in.Position -lt $in.Length) {
                     if ($CancelCheck -and (& $CancelCheck)) { $cancelled = $true; break }
-                    $toRead = [int][Math]::Min($buffer.Length, $remaining)
+                    $toRead = [int][Math]::Min([int64]$buffer.Length, [int64]$remaining)
                     $n = $in.Read($buffer, 0, $toRead)
                     if ($n -le 0) { break }
                     $out.Write($buffer, 0, $n)
