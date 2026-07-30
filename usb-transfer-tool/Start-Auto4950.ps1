@@ -193,7 +193,6 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="3*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="1.2*"/>
@@ -226,22 +225,24 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
           <CheckBox Grid.Row="3" x:Name="ChkAuto" Margin="0,8,0,0"
                     Content="Auto-transfer when a USB drive is plugged in (needs CMS case, OP name or pass no.)"/>
 
-          <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,8,0,4">
-            <TextBlock Text="Source drive:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <ComboBox x:Name="CmbDrive" Width="120" Foreground="#FF202020" VerticalAlignment="Center"/>
-            <Button x:Name="BtnDriveRefresh" Content="Refresh Drives"/>
-          </StackPanel>
-
-          <Grid Grid.Row="5" Margin="0,2,0,4">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Add source:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-              <Button x:Name="BtnAddFolder" Content="Add Folder(s)..." Background="#FF7B5BD1"/>
-              <Button x:Name="BtnAddFiles"  Content="Add Files..."     Background="#FF7B5BD1"/>
+          <!-- SOURCE section: auto-detected USB drive, plus manually-added folders/files -->
+          <Border Grid.Row="4" Background="#FF33334A" CornerRadius="6" Padding="8" Margin="0,10,0,4" BorderBrush="{StaticResource Accent}" BorderThickness="1">
+            <StackPanel>
+              <TextBlock Text="SOURCE" FontWeight="Bold" FontSize="14" Foreground="{StaticResource Accent}" Margin="0,0,0,6"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Text="Drive:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox x:Name="CmbDrive" Width="120" Foreground="#FF202020" VerticalAlignment="Center"/>
+                <Button x:Name="BtnDriveRefresh" Content="Refresh Drives"/>
+              </StackPanel>
+              <TextBlock Text="Add folders/files from anywhere (separate Windows picker):" Foreground="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4"/>
+              <StackPanel Orientation="Horizontal">
+                <Button x:Name="BtnAddFolder" Content="Add Folder(s)..." Background="#FF7B5BD1" FontSize="13"/>
+                <Button x:Name="BtnAddFiles"  Content="Add Files..."     Background="#FF7B5BD1" FontSize="13"/>
+              </StackPanel>
             </StackPanel>
-          </Grid>
+          </Border>
 
-          <Grid Grid.Row="6" Margin="0,2,0,2">
+          <Grid Grid.Row="5" Margin="0,2,0,2">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Selection:" FontWeight="Bold" Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
@@ -250,25 +251,25 @@ $script:ManualSources = New-Object System.Collections.Generic.List[string]
             </StackPanel>
           </Grid>
 
-          <Border Grid.Row="7" Background="#FF20202A" CornerRadius="6" Margin="0,4">
+          <Border Grid.Row="6" Background="#FF20202A" CornerRadius="6" Margin="0,4">
             <TreeView x:Name="TreeItems" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"/>
           </Border>
 
-          <Grid Grid.Row="8" Margin="0,4,0,2">
+          <Grid Grid.Row="7" Margin="0,4,0,2">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Added sources (folders/files, picked separately):" FontWeight="Bold" Foreground="{StaticResource Accent}" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            <TextBlock Grid.Column="0" Text="Added sources:" FontWeight="Bold" Foreground="{StaticResource Accent}" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
               <Button x:Name="BtnRemoveManualSource" Content="Remove Selected"/>
               <Button x:Name="BtnClearManualSources"  Content="Clear Added"/>
             </StackPanel>
           </Grid>
 
-          <Border Grid.Row="9" Background="#FF20202A" CornerRadius="6" Margin="0,0,0,4">
+          <Border Grid.Row="8" Background="#FF20202A" CornerRadius="6" Margin="0,0,0,4">
             <ListBox x:Name="LstManualSources" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
                      SelectionMode="Extended" FontSize="11"/>
           </Border>
 
-          <TextBlock Grid.Row="10" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
+          <TextBlock Grid.Row="9" x:Name="LblSelCount" Text="0 items selected" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/>
         </Grid>
       </Border>
 
