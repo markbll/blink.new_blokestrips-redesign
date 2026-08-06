@@ -86,6 +86,10 @@ $btnStart.Add_Click({
         [System.Windows.Forms.MessageBox]::Show("Please select all folder paths.", "Missing Input", "OK", "Warning"); return
     }
 
+    if (-not (Test-Path -LiteralPath $txtSource.Text -PathType Container)) {
+        [System.Windows.Forms.MessageBox]::Show("Source folder does not exist:`n$($txtSource.Text)", "Invalid Source", "OK", "Warning"); return
+    }
+
     $btnStart.Enabled = $false; $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor; $txtLog.Clear()
 
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -125,11 +129,14 @@ $btnStart.Add_Click({
     # --- STEP C: Robocopy Transfer ---
     $txtLog.AppendText("[$(Get-Date -Format T)] Starting Robocopy to Final Destination...`r`n")
 
-    # /Z = Restartable mode (crucial for reliability)
-    # /J = Unbuffered I/O (crucial for large files to prevent RAM exhaustion)
-    # /R:3 /W:5 = Retry 3 times, wait 5 seconds between retries
-    # /NP = No progress percentage (keeps log clean)
-    $robocopyArgs = @($jobTempPath, $txtDest.Text, "/Z", "/J", "/R:3", "/W:5", "/NP", "/NFL", "/NDL")
+    $robocopyLogPath = Join-Path $jobTempPath "robocopy.log"
+    # /Z    = Restartable mode (resumes mid-file after a network drop)
+    # /J    = Unbuffered I/O (crucial for large files to prevent RAM exhaustion)
+    # /MT:8 = 8 files copied concurrently, so split chunks transfer in parallel over the network
+    # /R:5 /W:10 = Retry 5 times, wait 10 seconds between retries (tolerate brief network blips)
+    # /NP   = No progress percentage (keeps log clean)
+    # /LOG: = Full per-file log written to the temp folder for troubleshooting network failures
+    $robocopyArgs = @($jobTempPath, $txtDest.Text, "/Z", "/J", "/MT:8", "/R:5", "/W:10", "/NP", "/LOG:$robocopyLogPath")
     $robocopyProcess = Start-Process -FilePath "robocopy" -ArgumentList $robocopyArgs -PassThru -WindowStyle Hidden
 
     while (-not $robocopyProcess.HasExited) {
@@ -147,7 +154,30 @@ $btnStart.Add_Click({
         $form.Cursor = [System.Windows.Forms.Cursors]::Default; $btnStart.Enabled = $true; return
     }
 
-    $txtLog.AppendText("[$(Get-Date -Format T)] Transfer completed successfully!`r`n")
+    $txtLog.AppendText("[$(Get-Date -Format T)] Transfer completed. Verifying files at destination...`r`n")
+
+    # --- STEP C.1: Verify Transfer Integrity ---
+    # Robocopy's exit code only reflects what robocopy itself observed; on a network
+    # share it's worth independently confirming every chunk landed at full size before
+    # the temp copy (the only remaining full copy) is offered up for deletion.
+    $verifyFailed = $false
+    Get-ChildItem -Path $jobTempPath -File | Where-Object { $_.Name -ne "robocopy.log" } | ForEach-Object {
+        $destFile = Join-Path $txtDest.Text $_.Name
+        if (-not (Test-Path -LiteralPath $destFile)) {
+            $txtLog.AppendText("[$(Get-Date -Format T)] VERIFY FAILED: $($_.Name) missing at destination.`r`n")
+            $verifyFailed = $true
+        } elseif ((Get-Item -LiteralPath $destFile).Length -ne $_.Length) {
+            $txtLog.AppendText("[$(Get-Date -Format T)] VERIFY FAILED: $($_.Name) size mismatch (source $($_.Length) bytes, destination $((Get-Item -LiteralPath $destFile).Length) bytes).`r`n")
+            $verifyFailed = $true
+        }
+    }
+
+    if ($verifyFailed) {
+        $txtLog.AppendText("[$(Get-Date -Format T)] ERROR: Verification failed. Temp files kept for retry. Robocopy log: $robocopyLogPath`r`n")
+        [System.Windows.Forms.MessageBox]::Show("Transfer verification failed: one or more files are missing or incomplete at the destination.`n`nTemp files have been kept so you can retry.", "Verification Failed", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        $form.Cursor = [System.Windows.Forms.Cursors]::Default; $btnStart.Enabled = $true; return
+    }
+    $txtLog.AppendText("[$(Get-Date -Format T)] Verification passed: all files match at destination.`r`n")
     $form.Cursor = [System.Windows.Forms.Cursors]::Default
 
     # --- STEP D: Cleanup ---
